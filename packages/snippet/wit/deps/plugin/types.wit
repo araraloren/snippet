@@ -1,0 +1,67 @@
+package snippet:plugin@0.1.0;
+
+interface types {
+    enum mode {
+        /// Compile the code to object
+        compile,
+
+        /// Expand the macro or do preprocessing
+        expand,
+
+        /// Compile the code to assembly
+        assemble,
+
+        /// Compile the code and link the object to executable
+        link,
+    }
+
+    enum error-type {
+        /// Not support given mode
+        invalid-mode,
+
+        /// Not support given language
+        invalid-lang,
+
+        /// Invalid option string
+        invalid-optstr,
+    }
+
+    resource optset {
+        /// Add an option to the option set
+        add-opt: func(opt: string) -> result<u64, error-type>;
+    }
+
+    resource services {
+        constructor();
+
+        /// Is the compiler in debug mode?
+        debug: func() -> bool;
+    
+        /// Current language.
+        lang: func() -> string;
+    
+        /// Current arguments.
+        args: func() -> list<string>;
+    
+        /// Current compile mode.
+        mode: func() -> mode;
+        
+        /// Set the language.
+        set-lang: func(language: string) -> result<_, error-type>;
+    
+        /// Set debug mode.
+        set-debug: func(debug: bool) -> result<_, error-type>;
+    
+        /// Set the compile mode.
+        set-mode: func(mode: mode) -> result<_, error-type>;
+    
+        /// Add an argument.
+        add-arg: func(arg: string) -> result<_, error-type>;
+    
+        /// Append arguments.
+        add-args: func(args: list<string>) -> result<_, error-type>;
+
+        /// Invoke the command
+        invoke-cmd: func(bin: string, args: list<string>) -> result<_, error-type>;
+    }
+}

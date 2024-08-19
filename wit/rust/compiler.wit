@@ -1,15 +1,14 @@
 
-package snippet:c@0.1.0;
+package snippet:rust@0.1.0;
 
 interface compiler {
     use snippet:plugin/types@0.1.0.{error-type, mode};
 
     enum standard {
-        c89,
-        c99,
-        c11,
-        c17,
-        c23,
+        rust2015,
+        rust2018,
+        rust2021,
+        rust2024,
     }
 
     resource compiler {
@@ -55,12 +54,12 @@ interface compiler {
         add-args: func(args: list<string>) -> result<_, error-type>;
 
         /// Compile the code
-        compile: func(source: list<string>, target: string) -> result<string, error-type>;
+        compile: func(source: list<string>, out: string) -> result<string, error-type>;
 
         /// Compile the file
-        compile-file: func(path: string, target: string) -> result<string, error-type>;
+        compile-file: func(path: string, out: string) -> result<string, error-type>;
 
         /// Link the object into executable
-        link-object: func(objs: list<string>, target: string) -> result<string, error-type>;
+        link-object: func(objs: list<string>, out: string) -> result<string, error-type>;
     }
 }

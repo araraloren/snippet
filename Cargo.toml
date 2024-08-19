@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["packages/snippet"]
+
+[workspace.dependencies]
+wit-bindgen = { version = "0.30" }
+wit-deps = { version = "0.3" }
+wit-bindgen-rt = { version = "0.30.0", features = [
+    "bitflags",
+] }
+wasmtime = { version = "23.0" }
+color-eyre = { version = "0.6" }
+
+
+[profile.release]
+lto = true
+codegen-units = 1
