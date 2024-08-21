@@ -24,6 +24,9 @@ interface types {
 
         /// Invalid option string
         invalid-optstr,
+
+        /// Can not get resource from resource table
+        invalid-resource,
     }
 
     resource optset {

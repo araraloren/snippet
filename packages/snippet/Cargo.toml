@@ -7,6 +7,9 @@ authors = ["araraloren"]
 [dependencies]
 wasmtime.workspace = true
 color-eyre.workspace = true
+cote.workspace = true
+wasmtime-wasi.workspace = true
+async-trait.workspace = true
 
 [build-dependencies]
 color-eyre.workspace = true
