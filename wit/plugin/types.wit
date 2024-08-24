@@ -1,9 +1,12 @@
 package snippet:plugin@0.1.0;
 
 interface types {
+
     enum lang {
         c,
+
         cxx,
+
         rust,
     }
 

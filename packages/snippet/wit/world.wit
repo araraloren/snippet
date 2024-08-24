@@ -4,8 +4,6 @@ package snippet:snippet@0.1.0;
 world c {
     import snippet:plugin/types@0.1.0;
 
-    export snippet:plugin/plugin@0.1.0;
-    export snippet:c/language@0.1.0;
-    export snippet:cpp/language@0.1.0;
-    export snippet:rust/language@0.1.0;
+    export snippet:plugin/language@0.1.0;
+    export snippet:plugin/compiler@0.1.0;
 }

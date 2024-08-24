@@ -1,4 +1,1 @@
 plugin = "../../../wit/plugin"
-c = "../../../wit/c"
-cpp = "../../../wit/cpp"
-rust = "../../../wit/rust"

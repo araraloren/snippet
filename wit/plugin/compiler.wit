@@ -1,15 +1,12 @@
 
-package snippet:rust@0.1.0;
+package snippet:plugin@0.1.0;
 
 interface compiler {
-    use snippet:plugin/types@0.1.0.{error-type, mode};
+    use types.{error-type, mode, lang};
 
-    enum standard {
-        rust2015,
-        rust2018,
-        rust2021,
-        rust2024,
-    }
+    bin: func() -> string;
+
+    support-langs: func() -> list<lang>;
 
     resource compiler {
         constructor();
@@ -33,7 +30,7 @@ interface compiler {
         set-opt-level: func(level: u8) -> result<_, error-type>;
 
         /// Set the c standard.
-        set-standard: func(std: standard) -> result<_, error-type>;
+        set-standard: func(std: string) -> result<_, error-type>;
 
         /// Add a macro.
         add-macro: func(macro: string, value: option<string>) -> result<_, error-type>;

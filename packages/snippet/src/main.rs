@@ -1,3 +1,4 @@
+mod utils;
 pub mod bindings {
     use wasmtime::component::*;
 
@@ -6,191 +7,118 @@ pub mod bindings {
         path: "wit",
         async: true,
         with: {
-            "snippet:plugin/types/optset": super::OptSet,
-            "snippet:plugin/types/services": super::Services,
+            "snippet:plugin/types/optset": crate::utils::OptSet,
+            "snippet:plugin/types/services": crate::utils::Services,
         },
         inline: "
-        package snippet:snippet;
+            package snippet:snippet;
 
-        world root {
-            import snippet:plugin/types@0.1.0;
+            world root {
+                import snippet:plugin/types@0.1.0;
 
-            export snippet:c/compiler@0.1.0;
-            export snippet:plugin/plugin@0.1.0;
-        }
+                export snippet:plugin/compiler@0.1.0;
+                export snippet:plugin/language@0.1.0;
+            }
         "
     });
 }
 
-use bindings::snippet::plugin::types::ErrorType;
-use bindings::snippet::plugin::types::Lang;
-use bindings::snippet::plugin::types::Mode;
-use cote::prelude::ASet;
-use wasmtime::component::Resource;
+use bindings::Root;
+use cote::prelude::*;
+use std::path::PathBuf;
+use utils::link_component;
+use wasmtime::component::*;
+use wasmtime::Config;
+use wasmtime::Store;
+use wasmtime_wasi::ResourceTable;
+use wasmtime_wasi::WasiCtx;
+use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::{WasiImpl, WasiView};
 
-#[derive(Debug, Default)]
-pub struct OptSet {
-    optset: ASet,
+#[derive(Debug, Cote)]
+pub struct Cli {
+    #[pos()]
+    compiler: PathBuf,
+
+    #[pos()]
+    lang: PathBuf,
 }
 
-#[async_trait::async_trait]
-impl<T: WasiView> bindings::snippet::plugin::types::HostOptset for WasiImpl<T> {
-    #[doc = " Add an option to the option set"]
-    async fn add_opt(&mut self, self_: Resource<OptSet>, opt: String) -> Result<u64, ErrorType> {
-        let optset = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+pub struct MyState {
+    ctx: WasiCtx,
+    table: ResourceTable,
+}
 
-        Ok(optset
-            .optset
-            .add_opt(opt)
-            .and_then(|v| v.run())
-            .map_err(|_| ErrorType::InvalidCommand)?)
+impl WasiView for MyState {
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.table
     }
 
-    fn drop(&mut self, rep: Resource<OptSet>) -> wasmtime::Result<()> {
-        self.table().delete(rep)?;
-        Ok(())
+    fn ctx(&mut self) -> &mut WasiCtx {
+        &mut self.ctx
     }
 }
 
-#[derive(Debug)]
-pub struct Services {
-    debug: bool,
-    lang: Lang,
-    mode: Mode,
-    args: Vec<String>,
+// NB: workaround some rustc inference - a future refactoring may make this
+// obsolete.
+fn type_annotate<T: WasiView, F>(val: F) -> F
+where
+    F: Fn(&mut T) -> WasiImpl<&mut T>,
+{
+    val
 }
 
-#[async_trait::async_trait]
-impl<T: WasiView> bindings::snippet::plugin::types::HostServices for WasiImpl<T> {
-    async fn new(&mut self) -> Resource<Services> {
-        self.table()
-            .push(Services {
-                debug: false,
-                lang: Lang::C,
-                mode: Mode::Link,
-                args: vec![],
-            })
-            .unwrap()
-    }
+#[tokio::main]
+async fn main() -> wasmtime::Result<()> {
+    let Cli { compiler, lang } = Cli::parse_env()?;
+    let data = link_component(&compiler, &lang)?;
 
-    #[doc = " Is the compiler in debug mode?"]
-    async fn debug(&mut self, self_: Resource<Services>) -> Result<bool, ErrorType> {
-        let services = self
-            .table()
-            .get(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
+    let mut config = Config::new();
+    // Instantiate the engine and store
+    let engine = wasmtime::Engine::new(config.async_support(true))?;
 
-        Ok(services.debug)
-    }
+    // Create a linker
+    let mut linker = Linker::<MyState>::new(&engine);
+    let closure = type_annotate::<MyState, _>(|t| WasiImpl(t));
 
-    #[doc = " Current language."]
-    async fn lang(&mut self, self_: Resource<Services>) -> Result<Lang, ErrorType> {
-        let services = self
-            .table()
-            .get(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
+    wasmtime_wasi::add_to_linker_async(&mut linker)?;
+    bindings::snippet::plugin::types::add_to_linker_get_host(&mut linker, closure)?;
+    //bindings::snippet::c::compiler::add_to_linker(&mut linker, |a| a)?;
 
-        Ok(services.lang.clone())
-    }
+    // Create a store
+    let mut store = Store::new(
+        &engine,
+        MyState {
+            ctx: WasiCtxBuilder::new()
+                .inherit_stdin()
+                .inherit_stdout()
+                .build(),
+            table: ResourceTable::new(),
+        },
+    );
 
-    #[doc = " Current arguments."]
-    async fn args(&mut self, self_: Resource<Services>) -> Result<Vec<String>, ErrorType> {
-        let services = self
-            .table()
-            .get(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
+    // Load component
+    let lang = Component::from_binary(&engine, &data)?;
+    //let compiler = Component::from_file(&engine, &compiler)?;
 
-        Ok(services.args.clone())
-    }
+    // Instantiate the component
+    let bindings = Root::instantiate_async(&mut store, &lang, &linker).await?;
 
-    #[doc = " Current compile mode."]
-    async fn mode(&mut self, self_: Resource<Services>) -> Result<Mode, ErrorType> {
-        let services = self
-            .table()
-            .get(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
+    // Call the `greet` function
+    let result = bindings
+        .snippet_plugin_language()
+        .call_name(&mut store)
+        .await?;
 
-        Ok(services.mode)
-    }
+    // This should print out `Greeting: [String("Hello, Alice!")]`
+    println!("Greeting: {:?}", result);
 
-    #[doc = " Set the language."]
-    async fn set_lang(
-        &mut self,
-        self_: Resource<Services>,
-        language: Lang,
-    ) -> Result<(), ErrorType> {
-        let services = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
+    let langs = bindings
+        .snippet_plugin_compiler()
+        .call_support_langs(&mut store)
+        .await?;
 
-        services.lang = language;
-        Ok(())
-    }
+    println!("--> supports: {:?}", langs);
 
-    #[doc = " Set debug mode."]
-    async fn set_debug(&mut self, self_: Resource<Services>, debug: bool) -> Result<(), ErrorType> {
-        let services = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
-
-        services.debug = debug;
-        Ok(())
-    }
-
-    #[doc = " Set the compile mode."]
-    async fn set_mode(&mut self, self_: Resource<Services>, mode: Mode) -> Result<(), ErrorType> {
-        let services = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
-
-        services.mode = mode;
-        Ok(())
-    }
-
-    #[doc = " Add an argument."]
-    async fn add_arg(&mut self, self_: Resource<Services>, arg: String) -> Result<(), ErrorType> {
-        let services = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
-
-        services.args.push(arg);
-        Ok(())
-    }
-
-    #[doc = " Append arguments."]
-    async fn add_args(
-        &mut self,
-        self_: Resource<Services>,
-        args: Vec<String>,
-    ) -> Result<(), ErrorType> {
-        let services = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidServicesResource)?;
-
-        services.args.extend(args);
-        Ok(())
-    }
-
-    #[doc = " Invoke the command"]
-    async fn invoke_cmd(&mut self, bin: String, args: Vec<String>) -> Result<(), ErrorType> {
-        todo!()
-    }
-
-    fn drop(&mut self, rep: Resource<Services>) -> wasmtime::Result<()> {
-        self.table().delete(rep)?;
-        Ok(())
-    }
+    Ok(())
 }
-
-impl<T: WasiView> bindings::snippet::plugin::types::Host for WasiImpl<T> {}
-
-fn main() {}
