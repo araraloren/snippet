@@ -1,6 +1,12 @@
 package snippet:plugin@0.1.0;
 
 interface types {
+    enum lang {
+        c,
+        cxx,
+        rust,
+    }
+
     enum mode {
         /// Compile the code to object
         compile,
@@ -25,8 +31,14 @@ interface types {
         /// Invalid option string
         invalid-optstr,
 
-        /// Can not get resource from resource table
-        invalid-resource,
+        /// Can not get optset resource from resource table
+        invalid-optset-resource,
+
+        /// Can not get services resource from resource table
+        invalid-services-resource,
+
+        /// Failed invoke command
+        invalid-command,
     }
 
     resource optset {
@@ -38,19 +50,19 @@ interface types {
         constructor();
 
         /// Is the compiler in debug mode?
-        debug: func() -> bool;
+        debug: func() -> result<bool, error-type>;
     
         /// Current language.
-        lang: func() -> string;
+        lang: func() -> result<lang, error-type>;
     
         /// Current arguments.
-        args: func() -> list<string>;
+        args: func() -> result<list<string>, error-type>;
     
         /// Current compile mode.
-        mode: func() -> mode;
+        mode: func() -> result<mode, error-type>;
         
         /// Set the language.
-        set-lang: func(language: string) -> result<_, error-type>;
+        set-lang: func(language: lang) -> result<_, error-type>;
     
         /// Set debug mode.
         set-debug: func(debug: bool) -> result<_, error-type>;
@@ -65,6 +77,6 @@ interface types {
         add-args: func(args: list<string>) -> result<_, error-type>;
 
         /// Invoke the command
-        invoke-cmd: func(bin: string, args: list<string>) -> result<_, error-type>;
+        invoke-cmd: static func(bin: string, args: list<string>) -> result<_, error-type>;
     }
 }
