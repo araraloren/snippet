@@ -12,6 +12,7 @@ wasmtime-wasi.workspace = true
 async-trait.workspace = true
 wac-graph.workspace = true
 tokio.workspace = true
+which.workspace = true
 
 [build-dependencies]
 color-eyre.workspace = true

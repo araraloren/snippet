@@ -28,8 +28,14 @@ interface types {
         /// Not support given mode
         invalid-mode,
 
-        /// Not support given language
-        invalid-lang,
+        /// Not support given optimization level
+        invalid-opt-level,
+
+        /// Not support given language standard
+        invalid-standard,
+
+        /// Not found given binary
+        invalid-binary,
 
         /// Invalid option string
         invalid-optstr,
@@ -79,7 +85,10 @@ interface types {
         /// Append arguments.
         add-args: func(args: list<string>) -> result<_, error-type>;
 
+        /// Find the executable binary.
+        find-bin: static func(bin: string) -> result<string, error-type>;
+
         /// Invoke the command
-        invoke-cmd: static func(bin: string, args: list<string>) -> result<_, error-type>;
+        invoke-cmd: static func(bin: string, args: list<string>, stdin: list<string>) -> result<_, error-type>;
     }
 }

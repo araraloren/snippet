@@ -1,32 +1,10 @@
-mod utils;
-pub mod bindings {
-    use wasmtime::component::*;
+pub mod host;
+pub mod link;
 
-    bindgen!({
-        world: "root",
-        path: "wit",
-        async: true,
-        with: {
-            "snippet:plugin/types/optset": crate::utils::OptSet,
-            "snippet:plugin/types/services": crate::utils::Services,
-        },
-        inline: "
-            package snippet:snippet;
-
-            world root {
-                import snippet:plugin/types@0.1.0;
-
-                export snippet:plugin/compiler@0.1.0;
-                export snippet:plugin/language@0.1.0;
-            }
-        "
-    });
-}
-
-use bindings::Root;
 use cote::prelude::*;
+use host::Root;
+use link::link_component;
 use std::path::PathBuf;
-use utils::link_component;
 use wasmtime::component::*;
 use wasmtime::Config;
 use wasmtime::Store;
@@ -44,12 +22,12 @@ pub struct Cli {
     lang: PathBuf,
 }
 
-pub struct MyState {
+pub struct State {
     ctx: WasiCtx,
     table: ResourceTable,
 }
 
-impl WasiView for MyState {
+impl WasiView for State {
     fn table(&mut self) -> &mut ResourceTable {
         &mut self.table
     }
@@ -78,17 +56,17 @@ async fn main() -> wasmtime::Result<()> {
     let engine = wasmtime::Engine::new(config.async_support(true))?;
 
     // Create a linker
-    let mut linker = Linker::<MyState>::new(&engine);
-    let closure = type_annotate::<MyState, _>(|t| WasiImpl(t));
+    let mut linker = Linker::<State>::new(&engine);
+    let closure = type_annotate::<State, _>(|t| WasiImpl(t));
 
     wasmtime_wasi::add_to_linker_async(&mut linker)?;
-    bindings::snippet::plugin::types::add_to_linker_get_host(&mut linker, closure)?;
+    host::types::add_to_linker_get_host(&mut linker, closure)?;
     //bindings::snippet::c::compiler::add_to_linker(&mut linker, |a| a)?;
 
     // Create a store
     let mut store = Store::new(
         &engine,
-        MyState {
+        State {
             ctx: WasiCtxBuilder::new()
                 .inherit_stdin()
                 .inherit_stdout()
@@ -115,7 +93,7 @@ async fn main() -> wasmtime::Result<()> {
 
     let langs = bindings
         .snippet_plugin_compiler()
-        .call_support_langs(&mut store)
+        .call_support(&mut store)
         .await?;
 
     println!("--> supports: {:?}", langs);

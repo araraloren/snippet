@@ -28,8 +28,14 @@ interface types {
         /// Not support given mode
         invalid-mode,
 
-        /// Not support given language
-        invalid-lang,
+        /// Not support given optimization level
+        invalid-opt-level,
+
+        /// Not support given language standard
+        invalid-standard,
+
+        /// Not found given binary
+        invalid-binary,
 
         /// Invalid option string
         invalid-optstr,
@@ -40,8 +46,23 @@ interface types {
         /// Can not get services resource from resource table
         invalid-services-resource,
 
+        /// Failed read/write command stdin/stdout
+        command-io-failed,
+
+        /// Command need stdin for write
+        command-need-stdin,
+
         /// Failed invoke command
-        invalid-command,
+        command-invoke-failed,
+
+        /// Command spawn failed
+        command-spawn-failed,
+    }
+
+    record cmd-result {
+        out: list<u8>,
+        err: list<u8>,
+        ret: s32,
     }
 
     resource optset {
@@ -79,7 +100,10 @@ interface types {
         /// Append arguments.
         add-args: func(args: list<string>) -> result<_, error-type>;
 
+        /// Find the executable binary.
+        find-bin: static func(bin: string) -> result<list<u8>, error-type>;
+
         /// Invoke the command
-        invoke-cmd: static func(bin: string, args: list<string>) -> result<_, error-type>;
+        invoke-cmd: static func(bin: list<u8>, args: list<string>, stdin: list<string>) -> result<cmd-result, error-type>;
     }
 }
