@@ -1,7 +1,10 @@
 use std::ffi::OsStr;
 use std::path::Path;
 
+use cote::prelude::ASer;
 use cote::prelude::ASet;
+use cote::prelude::Parser;
+use cote::prelude::SetValueFindExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use wasmtime::component::*;
@@ -39,12 +42,35 @@ use types::Mode;
 
 #[derive(Debug, Default)]
 pub struct OptSet {
-    optset: ASet,
+    parser: Parser<'static, ASet, ASer>,
+}
+
+impl OptSet {
+    pub fn new() -> Result<Self, cote::Error> {
+        let mut parser = Parser::<'_, ASet, ASer>::default();
+
+        parser.add_opt("-S=b: pass -S to compiler")?;
+        parser.add_opt("-E=b: pass -E to compiler")?;
+        parser.add_opt("-e=s: append code to generator")?;
+
+        Ok(Self { parser })
+    }
 }
 
 #[async_trait::async_trait]
 impl<T: WasiView> types::HostOptset for WasiImpl<T> {
-    #[doc = " Add an option to the option set"]
+    async fn new(&mut self) -> Resource<OptSet> {
+        self.table().push(OptSet::default()).unwrap()
+    }
+
+    async fn default(&mut self) -> Result<Resource<OptSet>, ErrorType> {
+        let optset = OptSet::new().map_err(|_| ErrorType::CreateOptsetFailed)?;
+
+        self.table()
+            .push(optset)
+            .map_err(|_| ErrorType::InvalidOptsetResource)
+    }
+
     async fn add_opt(&mut self, self_: Resource<OptSet>, opt: String) -> Result<u64, ErrorType> {
         let optset = self
             .table()
@@ -52,10 +78,27 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
             .map_err(|_| ErrorType::InvalidOptsetResource)?;
 
         Ok(optset
-            .optset
+            .parser
             .add_opt(opt)
             .and_then(|v| v.run())
             .map_err(|_| ErrorType::CommandInvokeFailed)?)
+    }
+
+    async fn get_value_str(
+        &mut self,
+        self_: Resource<OptSet>,
+        name: String,
+    ) -> Result<String, ErrorType> {
+        let optset = self
+            .table()
+            .get_mut(&self_)
+            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+
+        optset
+            .parser
+            .find_val::<String>(name)
+            .map_err(|_| ErrorType::AccessValueFailed)
+            .cloned()
     }
 
     fn drop(&mut self, rep: Resource<OptSet>) -> wasmtime::Result<()> {

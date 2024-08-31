@@ -120,15 +120,37 @@ impl GuestCompiler for Compiler {
         Ok(())
     }
 
-    fn compile_code(&self, source: Vec<String>, out: String) -> Result<String, ErrorType> {
+    fn compile_code(&self, source: Vec<String>, out: String) -> Result<CmdResult, ErrorType> {
+        let mut args = self.storage.args()?;
+        let mode = self.storage.mode()?;
+        let mode = match mode {
+            snippet::plugin::types::Mode::Compile => Some("-C".to_string()),
+            snippet::plugin::types::Mode::Expand => Some("-E".to_string()),
+            snippet::plugin::types::Mode::Assemble => Some("-S".to_string()),
+            snippet::plugin::types::Mode::Link => None,
+        };
+        let lang = self.storage.lang()?;
+        let lang = match lang {
+            snippet::plugin::types::Lang::C => "c",
+            snippet::plugin::types::Lang::Cxx => "c++",
+            snippet::plugin::types::Lang::Rust => "rust",
+        };
+
+        if let Some(mode) = mode {
+            args.push(mode);
+        }
+        args.extend(["-o".to_string(), out, format!("-x{lang}"), "-".to_string()]);
+
+        self.internal_compile(args, source)
+    }
+
+    fn compile_file(&self, path: String, out: String) -> Result<CmdResult, ErrorType> {
         todo!()
     }
 
-    fn compile_file(&self, path: String, out: String) -> Result<String, ErrorType> {
-        todo!()
-    }
-
-    fn link_object(&self, objs: Vec<String>, out: String) -> Result<String, ErrorType> {
+    fn link_object(&self, objs: Vec<String>, out: String) -> Result<CmdResult, ErrorType> {
         todo!()
     }
 }
+
+export!(Compiler);

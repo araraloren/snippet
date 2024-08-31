@@ -2,9 +2,10 @@
 package snippet:plugin@0.1.0;
 
 interface compiler {
-    use types.{error-type, mode, lang};
+    use types.{error-type, mode, lang, cmd-result};
 
-    bin: func() -> result<string, error-type>;
+    /// the PathBuf of binary
+    bin: func() -> result<list<u8>, error-type>;
 
     support: func() -> lang;
 
@@ -51,12 +52,12 @@ interface compiler {
         add-args: func(args: list<string>) -> result<_, error-type>;
 
         /// Compile the code
-        compile-code: func(source: list<string>, out: string) -> result<string, error-type>;
+        compile-code: func(source: list<string>, out: string) -> result<cmd-result, error-type>;
 
         /// Compile the file
-        compile-file: func(path: string, out: string) -> result<string, error-type>;
+        compile-file: func(path: string, out: string) -> result<cmd-result, error-type>;
 
         /// Link the object into executable
-        link-object: func(objs: list<string>, out: string) -> result<string, error-type>;
+        link-object: func(objs: list<string>, out: string) -> result<cmd-result, error-type>;
     }
 }

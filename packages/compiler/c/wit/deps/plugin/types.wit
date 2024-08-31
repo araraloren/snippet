@@ -57,6 +57,12 @@ interface types {
 
         /// Command spawn failed
         command-spawn-failed,
+
+        /// Initialize optset failed
+        create-optset-failed,
+
+        /// Can not access value of optset
+        access-value-failed,
     }
 
     record cmd-result {
@@ -66,8 +72,14 @@ interface types {
     }
 
     resource optset {
+        constructor();
+
+        default: static func() -> result<optset, error-type>;
+
         /// Add an option to the option set
         add-opt: func(opt: string) -> result<u64, error-type>;
+
+        get-value-str: func(name: string) -> result<string, error-type>;
     }
 
     resource services {

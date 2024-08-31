@@ -46,11 +46,33 @@ interface types {
         /// Can not get services resource from resource table
         invalid-services-resource,
 
+        /// Failed read/write command stdin/stdout
+        command-io-failed,
+
+        /// Command need stdin for write
+        command-need-stdin,
+
         /// Failed invoke command
-        invalid-command,
+        command-invoke-failed,
+
+        /// Command spawn failed
+        command-spawn-failed,
+
+        /// Initialize optset failed
+        create-optset-failed,
+    }
+
+    record cmd-result {
+        out: list<u8>,
+        err: list<u8>,
+        ret: s32,
     }
 
     resource optset {
+        constructor();
+
+        default: static func() -> result<optset, error-type>;
+
         /// Add an option to the option set
         add-opt: func(opt: string) -> result<u64, error-type>;
     }
@@ -86,9 +108,9 @@ interface types {
         add-args: func(args: list<string>) -> result<_, error-type>;
 
         /// Find the executable binary.
-        find-bin: static func(bin: string) -> result<string, error-type>;
+        find-bin: static func(bin: string) -> result<list<u8>, error-type>;
 
         /// Invoke the command
-        invoke-cmd: static func(bin: string, args: list<string>, stdin: list<string>) -> result<_, error-type>;
+        invoke-cmd: static func(bin: list<u8>, args: list<string>, stdin: list<string>) -> result<cmd-result, error-type>;
     }
 }

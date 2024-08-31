@@ -98,5 +98,30 @@ async fn main() -> wasmtime::Result<()> {
 
     println!("--> supports: {:?}", langs);
 
+    let optset = bindings
+        .snippet_plugin_language()
+        .call_initialize_optset(&mut store)
+        .await??;
+
+    bindings
+        .snippet_plugin_language()
+        .call_fill_optset(&mut store, optset)
+        .await??;
+    let optset = bindings
+        .snippet_plugin_language()
+        .call_initialize_optset(&mut store)
+        .await??;
+    let complier = bindings
+        .snippet_plugin_compiler()
+        .compiler()
+        .call_constructor(&mut store)
+        .await?;
+    let res = bindings
+        .snippet_plugin_language()
+        .call_compile(&mut store, optset, complier)
+        .await??;
+
+    dbg!(res);
+
     Ok(())
 }
