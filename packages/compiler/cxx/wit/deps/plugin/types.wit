@@ -60,6 +60,9 @@ interface types {
 
         /// Initialize optset failed
         create-optset-failed,
+
+        /// Can not access value of optset
+        access-value-failed,
     }
 
     record cmd-result {
@@ -75,6 +78,8 @@ interface types {
 
         /// Add an option to the option set
         add-opt: func(opt: string) -> result<u64, error-type>;
+
+        get-value-str: func(name: string) -> result<string, error-type>;
     }
 
     resource services {

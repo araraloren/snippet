@@ -1,10 +1,15 @@
+pub mod comp;
 pub mod host;
-pub mod link;
 
+use comp::collect_plugins;
+use comp::link_component;
 use cote::prelude::*;
+use host::types::Lang;
 use host::Root;
-use link::link_component;
+use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tracing_subscriber::filter::LevelFilter;
 use wasmtime::component::*;
 use wasmtime::Config;
 use wasmtime::Store;
@@ -12,15 +17,6 @@ use wasmtime_wasi::ResourceTable;
 use wasmtime_wasi::WasiCtx;
 use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::{WasiImpl, WasiView};
-
-#[derive(Debug, Cote)]
-pub struct Cli {
-    #[pos()]
-    compiler: PathBuf,
-
-    #[pos()]
-    lang: PathBuf,
-}
 
 pub struct State {
     ctx: WasiCtx,
@@ -47,9 +43,78 @@ where
 }
 
 #[tokio::main]
-async fn main() -> wasmtime::Result<()> {
-    let Cli { compiler, lang } = Cli::parse_env()?;
-    let data = link_component(&compiler, &lang)?;
+async fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
+    let subscriber = tracing_subscriber::fmt::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_filter_reloading();
+    let reload_handler = subscriber.reload_handle();
+    let mut parser = Parser::<'_, ASet, ASer>::default();
+
+    parser.add_opt("c=cmd: execute c code")?;
+    parser.add_opt("cxx;cpp=cmd: execute c++ code")?;
+    parser.add_opt("rs;rust=cmd: execute rust code")?;
+    parser.add_opt("--debug=b: display debug log message")?;
+    parser.add_opt("-h;--help=b: display help message")?;
+    subscriber.init();
+
+    Ok(parser
+        .run_async_mut(&mut PrePolicy::default(), |mut ret, parser| {
+            let reload_handler = reload_handler.clone();
+
+            async move {
+                if ret.status() {
+                    if *parser.find_val::<bool>("--debug")? {
+                        reload_handler
+                            .modify(|filter| {
+                                *filter = tracing_subscriber::EnvFilter::from_default_env()
+                                    .add_directive(LevelFilter::DEBUG.into());
+                            })
+                            .map_err(|e| {
+                                raise_error!("can not modify tracing subscriber: {e:?}")
+                            })?;
+                    }
+
+                    let lang = if *parser.find_val::<bool>("c")? {
+                        Some(Lang::C)
+                    } else if *parser.find_val::<bool>("cxx")? {
+                        Some(Lang::Cxx)
+                    } else if *parser.find_val::<bool>("rust")? {
+                        Some(Lang::Rust)
+                    } else {
+                        None
+                    };
+                    let help: bool = *parser.find_val("--help")?;
+
+                    tracing::debug!("running language {:?}", lang);
+                    if let Some(lang) = lang {
+                        let mut args = ret.take_args().to_vec();
+
+                        if help {
+                            args.insert(0, RawVal::from("--help"));
+                        }
+                        run_compiler(lang, args)
+                            .await
+                            .map_err(|e| raise_error!("can not running command: {e:?}"))?
+                    }
+                }
+                parser.display_help(
+                    env!("CARGO_PKG_AUTHORS"),
+                    env!("CARGO_PKG_VERSION"),
+                    env!("CARGO_PKG_DESCRIPTION"),
+                )?;
+                Ok(())
+            }
+        })
+        .await?)
+}
+
+pub async fn run_compiler(lang: Lang, args: Vec<RawVal>) -> wasmtime::Result<()> {
+    let plugins = collect_plugins(Path::new(".")).await?;
+
+    dbg!(&plugins);
+
+    let data: &[u8] = todo!(); // link_component(&compiler, &lang)?;
 
     let mut config = Config::new();
     // Instantiate the engine and store

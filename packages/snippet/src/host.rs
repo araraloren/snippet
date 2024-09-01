@@ -52,6 +52,17 @@ impl OptSet {
         parser.add_opt("-S=b: pass -S to compiler")?;
         parser.add_opt("-E=b: pass -E to compiler")?;
         parser.add_opt("-e=s: append code to generator")?;
+        parser.add_opt("-r=b: ignore value of -e, read code from stdin")?;
+        parser.add_opt("-end=s: set input code terminator")?;
+        parser.add_opt("-o=s: set output name")?;
+        parser.add_opt("-p=b: display code before display stdout")?;
+        parser.add_opt("-l=s: pass -l to compiler, link given library")?;
+        parser.add_opt("-L=s: pass -L to compiler, add link library searh path")?;
+        parser.add_opt("-f=s: pass given flag -<f> to compiler")?;
+        parser.add_opt("-flag=s: pass given flag --<flag> to compiler")?;
+        parser.add_opt("-std=s: set language standard version")?;
+        parser.add_opt("-c=s: select given compiler")?;
+        parser.add_opt("-m=s: change the main function header")?;
 
         Ok(Self { parser })
     }

@@ -28,6 +28,9 @@ impl Guest for Language {
 
     fn fill_optset(optset: Optset) -> Result<(), ErrorType> {
         optset.add_opt("c=cmd: execute c code")?;
+        optset.add_opt("-i=s: pass -i to compiler, include given header")?;
+        optset.add_opt("-I=s: pass -I to compiler, add include header search path")?;
+        optset.add_opt("-D=s: pass -D to compiler, add macro definition")?;
         Ok(())
     }
 
