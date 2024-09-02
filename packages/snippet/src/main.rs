@@ -1,14 +1,19 @@
 pub mod comp;
 pub mod host;
 
-use comp::collect_plugins;
+use comp::find_plugins;
 use comp::link_component;
+use comp::Plugin;
+use comp::Plugins;
 use cote::prelude::*;
 use host::types::Lang;
 use host::Root;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
+use tracing::debug;
+use tracing::field::debug;
 use tracing_subscriber::filter::LevelFilter;
 use wasmtime::component::*;
 use wasmtime::Config;
@@ -51,16 +56,24 @@ async fn main() -> color_eyre::Result<()> {
     let reload_handler = subscriber.reload_handle();
     let mut parser = Parser::<'_, ASet, ASer>::default();
 
-    parser.add_opt("c=cmd: execute c code")?;
-    parser.add_opt("cxx;cpp=cmd: execute c++ code")?;
-    parser.add_opt("rs;rust=cmd: execute rust code")?;
+    parser.add_opt("lang@1: language to be execute: c, c++, rust".infer::<Pos<String>>())?;
     parser.add_opt("--debug=b: display debug log message")?;
-    parser.add_opt("-h;--help=b: display help message")?;
+    parser.add_opt("--help=b: display help message")?;
+    parser.add_opt("--path: search plugins in given path".infer::<PathBuf>())?;
+    parser.add_opt("--comp: using given compiler plugin".infer::<PathBuf>())?;
+    parser.add_opt("--lang: using given language plugin".infer::<PathBuf>())?;
     subscriber.init();
 
     Ok(parser
         .run_async_mut(&mut PrePolicy::default(), |mut ret, parser| {
             let reload_handler = reload_handler.clone();
+            let print_help = |parser: &mut Parser<'_, ASet, ASer>| {
+                parser.display_help(
+                    env!("CARGO_PKG_AUTHORS"),
+                    env!("CARGO_PKG_VERSION"),
+                    env!("CARGO_PKG_DESCRIPTION"),
+                )
+            };
 
             async move {
                 if ret.status() {
@@ -75,46 +88,70 @@ async fn main() -> color_eyre::Result<()> {
                             })?;
                     }
 
-                    let lang = if *parser.find_val::<bool>("c")? {
-                        Some(Lang::C)
-                    } else if *parser.find_val::<bool>("cxx")? {
-                        Some(Lang::Cxx)
-                    } else if *parser.find_val::<bool>("rust")? {
-                        Some(Lang::Rust)
-                    } else {
-                        None
-                    };
-                    let help: bool = *parser.find_val("--help")?;
-
-                    tracing::debug!("running language {:?}", lang);
-                    if let Some(lang) = lang {
+                    if let Ok(lang) = parser.find_val::<String>("lang@1") {
+                        let lang = Lang::from_str(lang).map_err(|e| {
+                            raise_error!("not support given language {lang}: {e:?}")
+                        })?;
+                        let help = parser.find_val("--help").copied().unwrap_or_default();
+                        let dir = parser
+                            .find_val::<String>("--path")
+                            .map(|v| v.as_str())
+                            .unwrap_or(".");
                         let mut args = ret.take_args().to_vec();
 
+                        tracing::debug!(
+                            "running language `{:?}`, search plugins in `{}`",
+                            lang,
+                            dir
+                        );
                         if help {
                             args.insert(0, RawVal::from("--help"));
                         }
-                        run_compiler(lang, args)
-                            .await
-                            .map_err(|e| raise_error!("can not running command: {e:?}"))?
+                        find_compiler_and_try(dir, lang, args).await
+                    } else {
+                        eprintln!("Which language do you want to execute: c, c++ or rust?");
+                        print_help(parser)?;
+                        Ok(())
                     }
+                } else {
+                    print_help(parser)?;
+                    ret.ok()?;
+                    Ok(())
                 }
-                parser.display_help(
-                    env!("CARGO_PKG_AUTHORS"),
-                    env!("CARGO_PKG_VERSION"),
-                    env!("CARGO_PKG_DESCRIPTION"),
-                )?;
-                Ok(())
             }
         })
         .await?)
 }
 
-pub async fn run_compiler(lang: Lang, args: Vec<RawVal>) -> wasmtime::Result<()> {
-    let plugins = collect_plugins(Path::new(".")).await?;
+pub async fn find_compiler_and_try(dir: &str, lang: Lang, args: Vec<RawVal>) -> cote::Result<()> {
+    let Plugins { compiler, language } = find_plugins(Path::new(dir)).await?;
+    let compilers: Vec<_> = compiler.into_iter().filter(|v| v.lang == lang).collect();
+    let languages: Vec<_> = language.into_iter().filter(|v| v.lang == lang).collect();
 
-    dbg!(&plugins);
+    if compilers.is_empty() {
+        return Err(raise_error!(
+            "can not find compiler support language `{:?}`",
+            lang
+        ));
+    } else if languages.is_empty() {
+        return Err(raise_error!(
+            "can not find language support language `{:?}`",
+            lang
+        ));
+    }
 
-    let data: &[u8] = todo!(); // link_component(&compiler, &lang)?;
+    for compiler in &compilers {
+        for language in &languages {
+            if run_compiler(compiler, language, args.clone()).await.is_ok() {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_compiler(comp: &Plugin, lang: &Plugin, args: Vec<RawVal>) -> wasmtime::Result<()> {
+    let data = link_component(&comp.path, &lang.path)?;
 
     let mut config = Config::new();
     // Instantiate the engine and store
@@ -187,6 +224,5 @@ pub async fn run_compiler(lang: Lang, args: Vec<RawVal>) -> wasmtime::Result<()>
         .await??;
 
     dbg!(res);
-
     Ok(())
 }

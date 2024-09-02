@@ -1,5 +1,7 @@
 use std::ffi::OsStr;
+use std::fmt::Debug;
 use std::path::Path;
+use std::str::FromStr;
 
 use cote::prelude::ASer;
 use cote::prelude::ASet;
@@ -265,3 +267,16 @@ impl<T: WasiView> types::HostServices for WasiImpl<T> {
 }
 
 impl<T: WasiView> types::Host for WasiImpl<T> {}
+
+impl FromStr for Lang {
+    type Err = ErrorType;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "c" => Ok(Self::C),
+            "cxx" | "cpp" | "cc" => Ok(Self::Cxx),
+            "rust" | "rs" => Ok(Self::Rust),
+            _ => Err(ErrorType::InvalidLanguage),
+        }
+    }
+}
