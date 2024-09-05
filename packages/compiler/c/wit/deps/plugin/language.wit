@@ -9,7 +9,7 @@ interface language {
     
     initialize-optset: func() -> result<optset, error-type>;
 
-    fill-optset: func(optset: optset) -> result<_, error-type>;
+    fill-optset: func(optset: optset) -> result<optset, error-type>;
 
     compile: func(optset: optset, compiler: compiler) -> result<cmd-result, error-type>;
 }

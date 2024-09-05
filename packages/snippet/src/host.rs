@@ -1,12 +1,19 @@
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::path::Path;
+use std::process::Stdio;
 use std::str::FromStr;
 
+use cote::aopt::ARef;
+use cote::aopt::RawVal;
 use cote::prelude::ASer;
 use cote::prelude::ASet;
+use cote::prelude::Args;
 use cote::prelude::Parser;
+use cote::prelude::PolicyParser;
+use cote::prelude::ReturnVal;
 use cote::prelude::SetValueFindExt;
+use cote::FwdPolicy;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use wasmtime::component::*;
@@ -51,6 +58,7 @@ impl OptSet {
     pub fn new() -> Result<Self, cote::Error> {
         let mut parser = Parser::<'_, ASet, ASer>::default();
 
+        parser.add_opt("--help=b: display help message");
         parser.add_opt("-S=b: pass -S to compiler")?;
         parser.add_opt("-E=b: pass -E to compiler")?;
         parser.add_opt("-e=s: append code to generator")?;
@@ -67,6 +75,28 @@ impl OptSet {
         parser.add_opt("-m=s: change the main function header")?;
 
         Ok(Self { parser })
+    }
+
+    pub fn parse(&mut self, args: Vec<RawVal>) -> Result<bool, cote::Error> {
+        let ret = PolicyParser::parse_policy(
+            &mut self.parser,
+            ARef::new(Args::from(args)),
+            &mut FwdPolicy::default(),
+        )?;
+        let print_help = |parser: &mut Parser<'_, ASet, ASer>| {
+            parser.display_help(
+                env!("CARGO_PKG_AUTHORS"),
+                env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_DESCRIPTION"),
+            )
+        };
+
+        if !ret.status() || *self.parser.find_val::<bool>("--help")? {
+            print_help(&mut self.parser)?;
+            Ok(false)
+        } else {
+            Ok(true)
+        }
     }
 }
 
@@ -231,6 +261,7 @@ impl<T: WasiView> types::HostServices for WasiImpl<T> {
         let mut cmd = Command::new(bin);
 
         cmd.args(args);
+        cmd.stdin(Stdio::piped());
         let mut child = cmd.spawn().map_err(|_| ErrorType::CommandSpawnFailed)?;
 
         match child.stdin.as_mut() {

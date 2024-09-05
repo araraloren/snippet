@@ -11,9 +11,6 @@ use host::Root;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
-use tracing::debug;
-use tracing::field::debug;
 use tracing_subscriber::filter::LevelFilter;
 use wasmtime::component::*;
 use wasmtime::Config;
@@ -142,30 +139,42 @@ pub async fn find_compiler_and_try(dir: &str, lang: Lang, args: Vec<RawVal>) -> 
 
     for compiler in &compilers {
         for language in &languages {
-            if run_compiler(compiler, language, args.clone()).await.is_ok() {
-                return Ok(());
+            match run_compiler(compiler, language, args.clone(), lang).await {
+                Ok(ret) => {
+                    if ret {
+                        return Ok(());
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "running compiler({}), language({}) failed: {e:?}",
+                        compiler.path.display(),
+                        language.path.display()
+                    );
+                }
             }
         }
     }
     Ok(())
 }
 
-pub async fn run_compiler(comp: &Plugin, lang: &Plugin, args: Vec<RawVal>) -> wasmtime::Result<()> {
-    let data = link_component(&comp.path, &lang.path)?;
+pub async fn run_compiler(
+    compiler: &Plugin,
+    language: &Plugin,
+    args: Vec<RawVal>,
+    lang: Lang,
+) -> wasmtime::Result<bool> {
+    let component = link_component(&compiler.path, &language.path)?;
 
     let mut config = Config::new();
-    // Instantiate the engine and store
     let engine = wasmtime::Engine::new(config.async_support(true))?;
 
-    // Create a linker
     let mut linker = Linker::<State>::new(&engine);
     let closure = type_annotate::<State, _>(|t| WasiImpl(t));
 
     wasmtime_wasi::add_to_linker_async(&mut linker)?;
     host::types::add_to_linker_get_host(&mut linker, closure)?;
-    //bindings::snippet::c::compiler::add_to_linker(&mut linker, |a| a)?;
 
-    // Create a store
     let mut store = Store::new(
         &engine,
         State {
@@ -176,53 +185,48 @@ pub async fn run_compiler(comp: &Plugin, lang: &Plugin, args: Vec<RawVal>) -> wa
             table: ResourceTable::new(),
         },
     );
-
-    // Load component
-    let lang = Component::from_binary(&engine, &data)?;
-    //let compiler = Component::from_file(&engine, &compiler)?;
-
-    // Instantiate the component
-    let bindings = Root::instantiate_async(&mut store, &lang, &linker).await?;
-
-    // Call the `greet` function
-    let result = bindings
+    let component = Component::from_binary(&engine, &component)?;
+    let plugin = Root::instantiate_async(&mut store, &component, &linker).await?;
+    let language_lang = plugin
         .snippet_plugin_language()
         .call_name(&mut store)
         .await?;
-
-    // This should print out `Greeting: [String("Hello, Alice!")]`
-    println!("Greeting: {:?}", result);
-
-    let langs = bindings
+    let compiler_lang = plugin
         .snippet_plugin_compiler()
         .call_support(&mut store)
         .await?;
 
-    println!("--> supports: {:?}", langs);
+    if !(language_lang == lang && compiler_lang == language_lang) {
+        return Ok(false);
+    }
 
-    let optset = bindings
+    // initialize the optset
+    let optset = plugin
         .snippet_plugin_language()
         .call_initialize_optset(&mut store)
         .await??;
-
-    bindings
+    // fill the optset
+    let optset = plugin
         .snippet_plugin_language()
         .call_fill_optset(&mut store, optset)
         .await??;
-    let optset = bindings
-        .snippet_plugin_language()
-        .call_initialize_optset(&mut store)
-        .await??;
-    let complier = bindings
+
+    let ret = store.data_mut().table().get_mut(&optset)?.parse(args)?;
+
+    if !ret {
+        return Ok(false);
+    }
+
+    let complier = plugin
         .snippet_plugin_compiler()
         .compiler()
         .call_constructor(&mut store)
         .await?;
-    let res = bindings
+    let res = plugin
         .snippet_plugin_language()
         .call_compile(&mut store, optset, complier)
         .await??;
 
     dbg!(res);
-    Ok(())
+    Ok(true)
 }

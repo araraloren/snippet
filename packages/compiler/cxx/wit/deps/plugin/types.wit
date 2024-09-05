@@ -37,6 +37,9 @@ interface types {
         /// Not found given binary
         invalid-binary,
 
+        /// Invalid language, not supported
+        invalid-language,
+
         /// Invalid option string
         invalid-optstr,
 

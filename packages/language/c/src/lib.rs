@@ -26,26 +26,28 @@ impl Guest for Language {
         Optset::default()
     }
 
-    fn fill_optset(optset: Optset) -> Result<(), ErrorType> {
+    fn fill_optset(optset: Optset) -> Result<Optset, ErrorType> {
         optset.add_opt("c=cmd: execute c code")?;
         optset.add_opt("-i=s: pass -i to compiler, include given header")?;
         optset.add_opt("-I=s: pass -I to compiler, add include header search path")?;
         optset.add_opt("-D=s: pass -D to compiler, add macro definition")?;
-        Ok(())
+        Ok(optset)
     }
 
-    fn compile(_optset: Optset, compiler: Compiler) -> Result<CmdResult, ErrorType> {
+    fn compile(optset: Optset, compiler: Compiler) -> Result<CmdResult, ErrorType> {
+        let code = optset.get_value_str("-e")?;
+        tracing::debug!("got code -> {code}");
         let codes = [
             "#include <stdio.h>",
             "int main()",
             "{",
-            "printf(\"hello from wasm32-wasip1\");",
+            &format!("{};", code),
             "}",
         ]
         .map(String::from)
         .to_vec();
 
-        compiler.compile_code(&codes, "a.out")
+        compiler.compile_code(&codes, "a.exe")
     }
 }
 
