@@ -250,6 +250,8 @@ pub async fn run_compiler(
         .call_fmt(&mut store)
         .await?;
 
+    tracing::debug!("got res => {res:?}");
+
     let Target {
         clean,
         output,
@@ -257,14 +259,6 @@ pub async fn run_compiler(
         cmd_result,
     } = res;
 
-    if display && !codes.is_empty() {
-        let fmt = fmt.unwrap_or(lang_fmt);
-        let cat = cat.ok();
-        tracing::debug!("display code with fmt: {fmt} and cat: {cat:?}");
-        println!("-----------------------------------");
-        comm::display_codes(fmt, cat, codes).await?;
-        println!("-----------------------------------");
-    }
     if cmd_result.ret == 0 {
         match &output {
             host::types::Output::Binary(Binary { path, args }) => {
@@ -276,11 +270,13 @@ pub async fn run_compiler(
                 );
                 let path = std::path::absolute(path)?;
                 let mut cmd = Command::new(path);
-                //let cmd = cmd.args(args);
+
+                cmd.args(args);
                 let mut child = cmd.spawn()?;
 
                 let ret = child.wait().await?;
 
+                println!();
                 tracing::debug!("running ret = {:?}", ret);
             }
             host::types::Output::Source(Source { path }) => {
@@ -290,6 +286,7 @@ pub async fn run_compiler(
         }
     }
     if clean {
+        tracing::debug!("remove target => {output:?}");
         match &output {
             host::types::Output::Binary(Binary { path, args: _ }) => {
                 remove_file(path).await?;
@@ -301,6 +298,12 @@ pub async fn run_compiler(
                 remove_file(path).await?;
             }
         }
+    }
+    if display && !codes.is_empty() {
+        let fmt = fmt.unwrap_or(lang_fmt);
+        let cat = cat.ok();
+        tracing::debug!("display code with fmt: {fmt} and cat: {cat:?}");
+        comm::display_codes(fmt, cat, codes).await?;
     }
     Ok(true)
 }

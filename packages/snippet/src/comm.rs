@@ -112,6 +112,7 @@ pub async fn display_codes(
 
     fmt_cmd.args(fmt_args);
     fmt_cmd.stdin(Stdio::piped());
+    fmt_cmd.stdout(Stdio::piped());
     if let Ok(mut fmt_child) = fmt_cmd
         .spawn()
         .map_err(|e| raise_error!("can not spawn command: {e:?}"))
@@ -148,8 +149,14 @@ pub async fn display_codes(
             .map_err(|e| raise_error!("can not read stdout of fmt command: {e:?}"))?;
 
         if let Some(cat) = cat {
-            let mut cat_cmd = Command::new(cat);
+            let (cat_command, cat_args) = cat
+                .split_once('=')
+                .ok_or_else(|| raise_error!("invalid fmt string -> {cat}"))?;
+            let cat_args: Vec<_> = cat_args.split(';').collect();
+            let mut cat_cmd = Command::new(cat_command);
 
+            cat_cmd.args(cat_args);
+            cat_cmd.stdin(Stdio::piped());
             if let Ok(mut cat_child) = cat_cmd.spawn() {
                 let cat_stdin = cat_child
                     .stdin
@@ -159,24 +166,19 @@ pub async fn display_codes(
                 cat_stdin
                     .write_all(output.as_bytes())
                     .await
-                    .map_err(|e| raise_error!("can not write to stdin of fmt: {e:?}"))?;
-
-                let mut stdout = cat_child
-                    .stdout
-                    .ok_or_else(|| raise_error!("can not get stdout of fmt command"))?;
-
-                output.clear();
-                stdout
-                    .read_to_string(&mut output)
-                    .await
-                    .map_err(|e| raise_error!("can not read stdout of fmt command: {e:?}"))?;
+                    .map_err(|e| raise_error!("can not write to stdin of cat: {e:?}"))?;
+                return Ok(());
             }
         }
+        println!("-----------------------------------");
         println!("{}", output);
+        println!("-----------------------------------");
     } else {
+        println!("-----------------------------------");
         for code in codes {
             println!("{}", code);
         }
+        println!("-----------------------------------");
     }
 
     Ok(())
