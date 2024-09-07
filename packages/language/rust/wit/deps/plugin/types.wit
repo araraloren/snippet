@@ -28,6 +28,8 @@ interface types {
         /// Not support given mode
         invalid-mode,
 
+        invalid-mode-for-link,
+
         /// Not support given optimization level
         invalid-opt-level,
 
@@ -70,6 +72,10 @@ interface types {
         empty-code,
 
         create-dir-failed,
+
+        init-rustyline-failed,
+
+        rustyline-io-failed,
     }
 
     record binary {

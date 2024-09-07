@@ -177,7 +177,7 @@ impl GuestCompiler for Compiler {
         let mode = self.storage.mode()?;
 
         if !matches!(mode, snippet::plugin::types::Mode::Link) {
-            return Err(snippet::plugin::types::ErrorType::InvalidMode);
+            return Err(snippet::plugin::types::ErrorType::InvalidModeForLink);
         }
 
         compiler_args.extend(objs);

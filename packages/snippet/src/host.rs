@@ -117,6 +117,16 @@ impl OptSet {
     }
 }
 
+pub fn inner_optset<T: WasiView>(
+    impl_: &mut WasiImpl<T>,
+    self_: Resource<OptSet>,
+) -> Result<&mut OptSet, ErrorType> {
+    impl_
+        .table()
+        .get_mut(&self_)
+        .map_err(|_| ErrorType::InvalidOptsetResource)
+}
+
 #[async_trait::async_trait]
 impl<T: WasiView> types::HostOptset for WasiImpl<T> {
     async fn new(&mut self) -> Resource<OptSet> {
@@ -132,16 +142,13 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
     }
 
     async fn add_opt(&mut self, self_: Resource<OptSet>, opt: String) -> Result<u64, ErrorType> {
-        let optset = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+        let optset = inner_optset(self, self_)?;
 
         Ok(optset
             .parser
             .add_opt(opt)
             .and_then(|v| v.run())
-            .map_err(|_| ErrorType::CommandInvokeFailed)?)
+            .map_err(|_| ErrorType::InvalidOptstr)?)
     }
 
     async fn get_val_str(
@@ -149,10 +156,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         self_: Resource<OptSet>,
         name: String,
     ) -> Result<String, ErrorType> {
-        let optset = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+        let optset = inner_optset(self, self_)?;
 
         optset
             .parser
@@ -166,10 +170,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         self_: Resource<OptSet>,
         name: String,
     ) -> Result<bool, ErrorType> {
-        let optset = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+        let optset = inner_optset(self, self_)?;
 
         optset
             .parser
@@ -183,10 +184,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         self_: Resource<OptSet>,
         name: String,
     ) -> Result<i64, ErrorType> {
-        let optset = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+        let optset = inner_optset(self, self_)?;
 
         optset
             .parser
@@ -200,10 +198,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         self_: Resource<OptSet>,
         name: String,
     ) -> Result<Vec<String>, ErrorType> {
-        let optset = self
-            .table()
-            .get_mut(&self_)
-            .map_err(|_| ErrorType::InvalidOptsetResource)?;
+        let optset = inner_optset(self, self_)?;
 
         optset
             .parser
@@ -365,13 +360,13 @@ impl<T: WasiView> types::HostServices for WasiImpl<T> {
     async fn read_from_stdin(&mut self, end: String) -> Result<Vec<String>, ErrorType> {
         println!("Please input your code, make sure your code correct.");
         println!("Enter `{}` end input.", end);
-        let mut rl = rustyline::DefaultEditor::new().map_err(|_| ErrorType::CommandIoFailed)?;
+        let mut rl = rustyline::DefaultEditor::new().map_err(|_| ErrorType::InitRustylineFailed)?;
         let mut lines = vec![];
 
         loop {
             let line = rl
                 .readline(":>> ")
-                .map_err(|_| ErrorType::CommandIoFailed)?;
+                .map_err(|_| ErrorType::RustylineIoFailed)?;
 
             if line.trim() == end {
                 break;
