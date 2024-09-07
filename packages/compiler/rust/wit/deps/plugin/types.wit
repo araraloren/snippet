@@ -66,6 +66,34 @@ interface types {
 
         /// Can not access value of optset
         access-value-failed,
+
+        empty-code,
+    }
+
+    record binary {
+        path: string,
+        args: list<string>,
+    }
+
+    record source {
+        path: string,
+    }
+
+    record object {
+        path: string,
+    }
+
+    variant output {
+        binary(binary),
+        source(source),
+        object(object),
+    }
+
+    record target {
+        clean: bool,
+        output: output,
+        codes: list<string>,
+        cmd-result: cmd-result,
     }
 
     record cmd-result {
@@ -82,7 +110,13 @@ interface types {
         /// Add an option to the option set
         add-opt: func(opt: string) -> result<u64, error-type>;
 
-        get-value-str: func(name: string) -> result<string, error-type>;
+        get-val-bool: func(name: string) -> result<bool, error-type>;
+
+        get-val-str: func(name: string) -> result<string, error-type>;
+
+        get-val-int: func(name: string) -> result<s64, error-type>;
+
+        get-vals-str: func(name: string) -> result<list<string>, error-type>;
     }
 
     resource services {
@@ -116,9 +150,15 @@ interface types {
         add-args: func(args: list<string>) -> result<_, error-type>;
 
         /// Find the executable binary.
-        find-bin: static func(bin: string) -> result<list<u8>, error-type>;
+        find-bin: static func(bin: string) -> result<string, error-type>;
 
         /// Invoke the command
-        invoke-cmd: static func(bin: list<u8>, args: list<string>, stdin: list<string>) -> result<cmd-result, error-type>;
+        invoke-cmd: static func(bin: string, args: list<string>, stdin: list<string>) -> result<cmd-result, error-type>;
+
+        /// Read from stdin
+        read-from-stdin: static func(end: string) -> result<list<string>, error-type>;
+
+        /// Log message to debug channel
+        log-debug: static func(log: string) -> result<_, error-type>;
     }
 }

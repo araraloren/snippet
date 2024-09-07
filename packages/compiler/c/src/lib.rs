@@ -12,29 +12,21 @@ use exports::snippet::plugin::compiler::Guest;
 use exports::snippet::plugin::compiler::GuestCompiler;
 use exports::snippet::plugin::compiler::Lang;
 use exports::snippet::plugin::compiler::Mode;
-use snippet::plugin::types::CmdResult;
+use snippet::plugin::types::Binary;
+use snippet::plugin::types::Object;
+use snippet::plugin::types::Output;
 use snippet::plugin::types::Services;
+use snippet::plugin::types::Source;
+use snippet::plugin::types::Target;
 
 pub struct Compiler {
     storage: Services,
 }
 
-impl Compiler {
-    pub fn internal_compile(
-        &self,
-        args: Vec<String>,
-        input: Vec<String>,
-    ) -> Result<CmdResult, ErrorType> {
-        let bin = Self::bin()?;
-
-        Services::invoke_cmd(&bin, &args, &input)
-    }
-}
-
 impl Guest for Compiler {
     type Compiler = Compiler;
 
-    fn bin() -> Result<Vec<u8>, ErrorType> {
+    fn bin() -> Result<String, ErrorType> {
         Services::find_bin("gcc")
     }
 
@@ -120,37 +112,106 @@ impl GuestCompiler for Compiler {
         Ok(())
     }
 
-    fn compile_code(&self, source: Vec<String>, out: String) -> Result<CmdResult, ErrorType> {
-        let mut args = self.storage.args()?;
+    fn compile_code(&self, source: Vec<String>, out: String) -> Result<Target, ErrorType> {
+        let mut compiler_args = self.storage.args()?;
         let mode = self.storage.mode()?;
-        let mode = match mode {
-            snippet::plugin::types::Mode::Compile => Some("-C".to_string()),
-            snippet::plugin::types::Mode::Expand => Some("-E".to_string()),
-            snippet::plugin::types::Mode::Assemble => Some("-S".to_string()),
-            snippet::plugin::types::Mode::Link => None,
-        };
-        let lang = self.storage.lang()?;
-        let lang = match lang {
-            snippet::plugin::types::Lang::C => "c",
-            snippet::plugin::types::Lang::Cxx => "c++",
-            snippet::plugin::types::Lang::Rust => "rust",
-        };
+        let compiler_mode = to_compiler_mode(mode);
+        let lang = to_lang_name(self.storage.lang()?);
 
-        if let Some(mode) = mode {
-            args.push(mode);
+        if let Some(mode) = compiler_mode {
+            compiler_args.push(mode.to_string());
         }
-        args.extend(["-o".to_string(), out, format!("-x{lang}"), "-".to_string()]);
+        compiler_args.extend([
+            "-o".to_string(),
+            out.clone(),
+            format!("-x{lang}"),
+            "-".to_string(),
+        ]);
+        let bin = Self::bin()?;
+        let result = Services::invoke_cmd(&bin, &compiler_args, &source)?;
 
-        self.internal_compile(args, source)
+        Ok(Target {
+            clean: false,
+            output: match mode {
+                snippet::plugin::types::Mode::Compile => Output::Object(Object { path: out }),
+                snippet::plugin::types::Mode::Link => Output::Binary(Binary {
+                    path: out,
+                    args: vec![],
+                }),
+                _ => Output::Source(Source { path: out }),
+            },
+            codes: source,
+            cmd_result: result,
+        })
     }
 
-    fn compile_file(&self, path: String, out: String) -> Result<CmdResult, ErrorType> {
-        todo!()
+    fn compile_file(&self, path: String, out: String) -> Result<Target, ErrorType> {
+        let mut compiler_args = self.storage.args()?;
+        let mode = self.storage.mode()?;
+        let compiler_mode = to_compiler_mode(mode);
+
+        if let Some(mode) = compiler_mode {
+            compiler_args.push(mode.to_string());
+        }
+        compiler_args.extend(["-o".to_string(), out.clone(), path]);
+        let bin = Self::bin()?;
+        let result = Services::invoke_cmd(&bin, &compiler_args, &[])?;
+
+        Ok(Target {
+            clean: false,
+            output: match mode {
+                snippet::plugin::types::Mode::Compile => Output::Object(Object { path: out }),
+                snippet::plugin::types::Mode::Link => Output::Binary(Binary {
+                    path: out,
+                    args: vec![],
+                }),
+                _ => Output::Source(Source { path: out }),
+            },
+            codes: vec![],
+            cmd_result: result,
+        })
     }
 
-    fn link_object(&self, objs: Vec<String>, out: String) -> Result<CmdResult, ErrorType> {
-        todo!()
+    fn link_object(&self, objs: Vec<String>, out: String) -> Result<Target, ErrorType> {
+        let mut compiler_args = self.storage.args()?;
+        let mode = self.storage.mode()?;
+
+        if !matches!(mode, snippet::plugin::types::Mode::Link) {
+            return Err(snippet::plugin::types::ErrorType::InvalidMode);
+        }
+
+        compiler_args.extend(objs);
+        compiler_args.extend(["-o".to_string(), out.clone()]);
+        let bin = Self::bin()?;
+        let result = Services::invoke_cmd(&bin, &compiler_args, &[])?;
+
+        Ok(Target {
+            clean: false,
+            output: Output::Binary(Binary {
+                path: out,
+                args: vec![],
+            }),
+            codes: vec![],
+            cmd_result: result,
+        })
     }
 }
 
 export!(Compiler);
+
+fn to_lang_name(lang: Lang) -> &'static str {
+    match lang {
+        snippet::plugin::types::Lang::C => "c",
+        snippet::plugin::types::Lang::Cxx => "c++",
+        snippet::plugin::types::Lang::Rust => "rust",
+    }
+}
+
+fn to_compiler_mode(mode: Mode) -> Option<&'static str> {
+    match mode {
+        snippet::plugin::types::Mode::Compile => Some("-C"),
+        snippet::plugin::types::Mode::Expand => Some("-E"),
+        snippet::plugin::types::Mode::Assemble => Some("-S"),
+        snippet::plugin::types::Mode::Link => None,
+    }
+}

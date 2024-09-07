@@ -2,7 +2,7 @@
 package snippet:plugin@0.1.0;
 
 interface language {
-    use types.{error-type, mode, optset, lang, cmd-result};
+    use types.{error-type, mode, optset, lang, target};
     use compiler.{compiler};
 
     name: func() -> lang;
@@ -11,5 +11,5 @@ interface language {
 
     fill-optset: func(optset: optset) -> result<optset, error-type>;
 
-    compile: func(optset: optset, compiler: compiler) -> result<cmd-result, error-type>;
+    compile: func(optset: optset, compiler: compiler) -> result<target, error-type>;
 }

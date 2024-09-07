@@ -63,7 +63,7 @@ pub async fn find_plugins(dir: &Path) -> cote::Result<Plugins> {
                     let without_ext = name
                         .strip_suffix(".wasm")
                         .ok_or_else(|| raise_error!("can not strip suffix .wasm of {name}"))?;
-                    let parts: Vec<_> = without_ext.split(|v| v == '_' || v == '-').collect();
+                    let parts: Vec<_> = without_ext.split(['_', '-']).collect();
 
                     if parts.len() == 3 {
                         if let Some(["snippet", ty, name]) = parts.get(0..3) {

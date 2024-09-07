@@ -6,11 +6,19 @@ use comp::link_component;
 use comp::Plugin;
 use comp::Plugins;
 use cote::prelude::*;
+use host::types::Binary;
 use host::types::Lang;
+use host::types::Object;
+use host::types::Source;
+use host::types::Target;
 use host::Root;
+use std::env::current_dir;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tokio::fs::read_to_string;
+use tokio::fs::remove_file;
+use tokio::process::Command;
 use tracing_subscriber::filter::LevelFilter;
 use wasmtime::component::*;
 use wasmtime::Config;
@@ -84,26 +92,28 @@ async fn main() -> color_eyre::Result<()> {
                                 raise_error!("can not modify tracing subscriber: {e:?}")
                             })?;
                     }
+                    let help = parser.find_val("--help").copied().unwrap_or_default();
 
-                    if let Ok(lang) = parser.find_val::<String>("lang@1") {
+                    if help {
+                        print_help(parser)?;
+                        Ok(())
+                    } else if let Ok(lang) = parser.find_val::<String>("lang@1") {
                         let lang = Lang::from_str(lang).map_err(|e| {
                             raise_error!("not support given language {lang}: {e:?}")
                         })?;
-                        let help = parser.find_val("--help").copied().unwrap_or_default();
+
                         let dir = parser
                             .find_val::<String>("--path")
                             .map(|v| v.as_str())
                             .unwrap_or(".");
-                        let mut args = ret.take_args().to_vec();
+                        let args = ret.take_args().to_vec();
 
                         tracing::debug!(
                             "running language `{:?}`, search plugins in `{}`",
                             lang,
                             dir
                         );
-                        if help {
-                            args.insert(0, RawVal::from("--help"));
-                        }
+
                         find_compiler_and_try(dir, lang, args).await
                     } else {
                         eprintln!("Which language do you want to execute: c, c++ or rust?");
@@ -217,6 +227,13 @@ pub async fn run_compiler(
         return Ok(false);
     }
 
+    let inner_optset = store.data_mut().table().get(&optset)?;
+    let display: bool = inner_optset
+        .parser
+        .find_val("-p")
+        .copied()
+        .unwrap_or_default();
+
     let complier = plugin
         .snippet_plugin_compiler()
         .compiler()
@@ -227,6 +244,56 @@ pub async fn run_compiler(
         .call_compile(&mut store, optset, complier)
         .await??;
 
-    dbg!(res);
+    let Target {
+        clean,
+        output,
+        codes,
+        cmd_result,
+    } = res;
+
+    if display {
+        println!("-----------------------------------");
+        for code in codes {
+            println!("{}", code);
+        }
+        println!("-----------------------------------");
+    }
+    if cmd_result.ret == 0 {
+        match &output {
+            host::types::Output::Binary(Binary { path, args }) => {
+                tracing::debug!(
+                    "running binary `{}` with args: `{:?}` in cwd `{}`",
+                    path,
+                    args,
+                    current_dir()?.display()
+                );
+                let path = std::path::absolute(path)?;
+                let mut cmd = Command::new(path);
+                //let cmd = cmd.args(args);
+                let mut child = cmd.spawn()?;
+
+                let ret = child.wait().await?;
+
+                tracing::debug!("running ret = {:?}", ret);
+            }
+            host::types::Output::Source(Source { path }) => {
+                println!("{}", read_to_string(path).await?);
+            }
+            host::types::Output::Object(Object { path: _ }) => {}
+        }
+    }
+    if clean {
+        match &output {
+            host::types::Output::Binary(Binary { path, args: _ }) => {
+                remove_file(path).await?;
+            }
+            host::types::Output::Source(Source { path }) => {
+                remove_file(path).await?;
+            }
+            host::types::Output::Object(Object { path }) => {
+                remove_file(path).await?;
+            }
+        }
+    }
     Ok(true)
 }
