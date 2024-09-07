@@ -8,6 +8,8 @@ wit_bindgen::generate!({
     }
 });
 
+use std::path::PathBuf;
+
 use exports::snippet::plugin::language::ErrorType;
 use exports::snippet::plugin::language::Guest;
 use snippet::plugin::compiler::Compiler;
@@ -22,6 +24,10 @@ pub struct Language;
 impl Guest for Language {
     fn name() -> Lang {
         Lang::C
+    }
+
+    fn fmt() -> String {
+        String::from("clang-format=--style=LLVM")
     }
 
     fn initialize_optset() -> Result<Optset, ErrorType> {
@@ -76,11 +82,7 @@ impl Guest for Language {
                 compiler.add_library_path(&library_path)?;
             }
         }
-        if let Ok(libraries) = optset.get_vals_str("-l=s") {
-            for library in libraries {
-                compiler.link_library(&library)?;
-            }
-        }
+
         if let Ok(definitions) = optset.get_vals_str("-D=s") {
             for definition in definitions {
                 compiler.add_arg(&format!("-D{definition}"))?;
@@ -110,40 +112,9 @@ impl Guest for Language {
             return Err(ErrorType::InvalidMode);
         }
 
-        let end_marker = optset.get_val_str("-end=s").unwrap_or("@@End".to_string());
         let read_from_stdin = optset.get_val_bool("-r=b").unwrap_or_default();
-
         let codes = optset.get_vals_str("-e=s").unwrap_or_default();
-        let main_signature = optset
-            .get_val_str("-main=s")
-            .unwrap_or("int main(void)".to_string());
-
-        let mut compile_codes = vec![];
-
-        compile_codes.push("#include <stdio.h>".to_string());
-        if let Ok(includes) = optset.get_vals_str("-i=s") {
-            for include in includes {
-                if include != "stdio.h" {
-                    compile_codes.push(format!("#include <{}>", include));
-                }
-            }
-        }
-        if let Ok(pre_process) = optset.get_vals_str("-pp=s") {
-            for process in pre_process {
-                compile_codes.push(format!("#{}", process));
-            }
-        }
-
-        compiler.set_mode(if assemble {
-            Mode::Assemble
-        } else if expand {
-            Mode::Expand
-        } else if compile {
-            Mode::Compile
-        } else {
-            Mode::Link
-        })?;
-
+        let files = optset.get_vals_str("files").unwrap_or_default();
         let output = optset.get_val_str("-o=s").unwrap_or(
             if assemble {
                 "a.s"
@@ -157,23 +128,67 @@ impl Guest for Language {
             .to_string(),
         );
 
-        if read_from_stdin {
-            if !codes.is_empty() {
-                Services::log_debug("codes append by -e is ignored")?;
-            }
-            todo!()
-        } else if !codes.is_empty() {
-            compile_codes.push(main_signature);
-            compile_codes.push("{".to_string());
-            for code in codes {
-                if code.ends_with(";") {
-                    compile_codes.push(code);
-                } else {
-                    compile_codes.push(format!("{};", code));
+        Services::log_debug(&format!("files = {files:?}"))?;
+
+        let ret = if files.is_empty() {
+            if let Ok(libraries) = optset.get_vals_str("-l=s") {
+                for library in libraries {
+                    compiler.link_library(&library)?;
                 }
             }
-            compile_codes.push("return 0;".to_string());
-            compile_codes.push("}".to_string());
+
+            let end_marker = optset.get_val_str("-end=s").unwrap_or("@@End".to_string());
+            let main_signature = optset
+                .get_val_str("-main=s")
+                .unwrap_or("int main(void)".to_string());
+
+            let mut compile_codes = vec![];
+
+            compile_codes.push("#include <stdio.h>".to_string());
+            if let Ok(includes) = optset.get_vals_str("-i=s") {
+                for include in includes {
+                    if include != "stdio.h" {
+                        compile_codes.push(format!("#include <{}>", include));
+                    }
+                }
+            }
+            if let Ok(pre_process) = optset.get_vals_str("-pp=s") {
+                for process in pre_process {
+                    compile_codes.push(format!("#{}", process));
+                }
+            }
+
+            compiler.set_mode(if assemble {
+                Mode::Assemble
+            } else if expand {
+                Mode::Expand
+            } else if compile {
+                Mode::Compile
+            } else {
+                Mode::Link
+            })?;
+
+            if read_from_stdin {
+                Services::log_debug("read code from stdin")?;
+                if !codes.is_empty() {
+                    Services::log_debug("codes append by -e is ignored")?;
+                }
+                for code in Services::read_from_stdin(&end_marker)? {
+                    compile_codes.push(code);
+                }
+            } else if !codes.is_empty() {
+                compile_codes.push(main_signature);
+                compile_codes.push("{".to_string());
+                for code in codes {
+                    if code.ends_with(";") {
+                        compile_codes.push(code);
+                    } else {
+                        compile_codes.push(format!("{};", code));
+                    }
+                }
+                compile_codes.push("return 0;".to_string());
+                compile_codes.push("}".to_string());
+            }
 
             Services::log_debug("try to compile code")?;
 
@@ -183,10 +198,56 @@ impl Guest for Language {
             ret.codes = compile_codes;
 
             Services::log_debug("compile code successed")?;
-            Ok(ret)
+            ret
         } else {
-            Err(ErrorType::EmptyCode)
-        }
+            if read_from_stdin {
+                Services::log_debug("ignore read from stdin flag")?;
+            }
+            if !codes.is_empty() {
+                Services::log_debug("ignore code append from -e")?;
+            }
+            let tmpdir = Services::create_tmpdir()?;
+            let tmpdir = PathBuf::from(tmpdir);
+            let mut objects = vec![];
+
+            compiler.set_mode(Mode::Compile)?;
+            for (idx, file) in files.iter().enumerate() {
+                let out = tmpdir.join(format!("{}.o", idx));
+                let out_path = out.to_string_lossy();
+                let ret = compiler.compile_file(file, &out_path)?;
+
+                Services::log_debug(&format!("compile object ret = {ret:?}"))?;
+                if ret.cmd_result.ret == 0 {
+                    objects.push(out_path.to_string());
+                }
+            }
+            if let Ok(libraries) = optset.get_vals_str("-l=s") {
+                for library in libraries {
+                    compiler.link_library(&library)?;
+                }
+            }
+
+            compiler.set_mode(if assemble {
+                Mode::Assemble
+            } else if expand {
+                Mode::Expand
+            } else if compile {
+                Mode::Compile
+            } else {
+                Mode::Link
+            })?;
+
+            Services::log_debug("try to compile multiple file")?;
+
+            let mut ret = compiler.link_object(&objects, &output)?;
+
+            Services::log_debug("compile multiple file successed")?;
+            ret.clean = !not_clean;
+            ret
+        };
+
+        Services::log_debug(&format!("compile ret = {ret:?}"))?;
+        Ok(ret)
     }
 }
 

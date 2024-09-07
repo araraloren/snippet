@@ -1,10 +1,10 @@
-pub mod comp;
+pub mod comm;
 pub mod host;
 
-use comp::find_plugins;
-use comp::link_component;
-use comp::Plugin;
-use comp::Plugins;
+use comm::find_plugins;
+use comm::link_component;
+use comm::Plugin;
+use comm::Plugins;
 use cote::prelude::*;
 use host::types::Binary;
 use host::types::Lang;
@@ -106,14 +106,14 @@ async fn main() -> color_eyre::Result<()> {
                             .find_val::<String>("--path")
                             .map(|v| v.as_str())
                             .unwrap_or(".");
-                        let args = ret.take_args().to_vec();
+                        let mut args = ret.take_args().to_vec();
 
                         tracing::debug!(
                             "running language `{:?}`, search plugins in `{}`",
                             lang,
                             dir
                         );
-
+                        args.remove(1);
                         find_compiler_and_try(dir, lang, args).await
                     } else {
                         eprintln!("Which language do you want to execute: c, c++ or rust?");
@@ -146,7 +146,7 @@ pub async fn find_compiler_and_try(dir: &str, lang: Lang, args: Vec<RawVal>) -> 
             lang
         ));
     }
-
+    tracing::debug!("args for compiler: {args:?}");
     for compiler in &compilers {
         for language in &languages {
             match run_compiler(compiler, language, args.clone(), lang).await {
@@ -233,6 +233,8 @@ pub async fn run_compiler(
         .find_val("-p")
         .copied()
         .unwrap_or_default();
+    let fmt: Result<String, cote::Error> = inner_optset.parser.find_val("-fmt=s").cloned();
+    let cat: Result<String, cote::Error> = inner_optset.parser.find_val("-cat=s").cloned();
 
     let complier = plugin
         .snippet_plugin_compiler()
@@ -243,6 +245,10 @@ pub async fn run_compiler(
         .snippet_plugin_language()
         .call_compile(&mut store, optset, complier)
         .await??;
+    let lang_fmt = plugin
+        .snippet_plugin_language()
+        .call_fmt(&mut store)
+        .await?;
 
     let Target {
         clean,
@@ -251,11 +257,12 @@ pub async fn run_compiler(
         cmd_result,
     } = res;
 
-    if display {
+    if display && !codes.is_empty() {
+        let fmt = fmt.unwrap_or(lang_fmt);
+        let cat = cat.ok();
+        tracing::debug!("display code with fmt: {fmt} and cat: {cat:?}");
         println!("-----------------------------------");
-        for code in codes {
-            println!("{}", code);
-        }
+        comm::display_codes(fmt, cat, codes).await?;
         println!("-----------------------------------");
     }
     if cmd_result.ret == 0 {

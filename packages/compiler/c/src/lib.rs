@@ -209,7 +209,7 @@ fn to_lang_name(lang: Lang) -> &'static str {
 
 fn to_compiler_mode(mode: Mode) -> Option<&'static str> {
     match mode {
-        snippet::plugin::types::Mode::Compile => Some("-C"),
+        snippet::plugin::types::Mode::Compile => Some("-c"),
         snippet::plugin::types::Mode::Expand => Some("-E"),
         snippet::plugin::types::Mode::Assemble => Some("-S"),
         snippet::plugin::types::Mode::Link => None,

@@ -6,6 +6,8 @@ interface language {
     use compiler.{compiler};
 
     name: func() -> lang;
+
+    fmt: func() -> string;
     
     initialize-optset: func() -> result<optset, error-type>;
 

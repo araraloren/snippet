@@ -68,6 +68,8 @@ interface types {
         access-value-failed,
 
         empty-code,
+
+        create-dir-failed,
     }
 
     record binary {
@@ -160,5 +162,8 @@ interface types {
 
         /// Log message to debug channel
         log-debug: static func(log: string) -> result<_, error-type>;
+
+        /// Create a temp dir for objects
+        create-tmpdir: static func() -> result<string, error-type>;
     }
 }

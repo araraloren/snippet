@@ -16,6 +16,7 @@ tokio.workspace = true
 which.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
+rustyline.workspace = true
 
 [build-dependencies]
 color-eyre.workspace = true
