@@ -27,6 +27,9 @@ reqwest.workspace = true
 color-eyre.workspace = true
 wit-deps.workspace = true
 
+[features]
+local = []
+
 [[bin]]
 name = "snippet"
 path = "src/main.rs"
