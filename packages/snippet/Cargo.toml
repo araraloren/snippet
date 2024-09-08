@@ -3,6 +3,10 @@ name = "snippet"
 version = "0.1.0"
 edition = "2021"
 authors = ["araraloren"]
+license = "MPL-2.0"
+categories = ["command-line-interface"]
+keywords = ["wasi", "cli", "c", "c++", "compiler"]
+repository = "https://github.com/araraloren/snippet/"
 description = "Running c/c++/rust snippet from command line"
 
 [dependencies]
