@@ -13,11 +13,12 @@ use host::types::Source;
 use host::types::Target;
 use host::Root;
 use std::env::current_dir;
+use std::env::current_exe;
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 use tokio::fs::read_to_string;
 use tokio::fs::remove_file;
+use tokio::fs::File;
 use tokio::process::Command;
 use tracing_subscriber::filter::LevelFilter;
 use wasmtime::component::*;
@@ -61,7 +62,10 @@ async fn main() -> color_eyre::Result<()> {
     let reload_handler = subscriber.reload_handle();
     let mut parser = Parser::<'_, ASet, ASer>::default();
 
-    parser.add_opt("lang@1: language to be execute: c, c++, rust".infer::<Pos<String>>())?;
+    parser.add_opt("f;fetch=cmd: fetch plugin from github release")?;
+    parser.add_opt("c=cmd: language to be execute: c, c++, rust")?;
+    parser.add_opt("cc;cpp;c++=cmd: language to be execute: c, c++, rust")?;
+    parser.add_opt("rs;rust=cmd: language to be execute: c, c++, rust")?;
     parser.add_opt("--debug=b: display debug log message")?;
     parser.add_opt("--help=b: display help message")?;
     parser.add_opt("--path: search plugins in given path".infer::<PathBuf>())?;
@@ -93,28 +97,59 @@ async fn main() -> color_eyre::Result<()> {
                             })?;
                     }
                     let help = parser.find_val("--help").copied().unwrap_or_default();
+                    let c_cmd = parser.find_val::<bool>("c").ok();
+                    let cxx_cmd = parser.find_val::<bool>("cpp").ok();
+                    let rust_cmd = parser.find_val::<bool>("rust").ok();
+                    let fetch_cmd = parser.find_val::<bool>("fetch").ok();
+                    let current_exe = current_exe()
+                        .map_err(|e| raise_error!("can not get current exe directory: {e:?}"))?;
+                    let current_exe = current_exe
+                        .parent()
+                        .map(|v| v.to_string_lossy().to_string());
+                    let plugin_directory = &current_exe.ok_or_else(|| {
+                        raise_error!("can not find parent directory of current exe")
+                    })?;
+                    let plugin_directory = parser
+                        .find_val::<String>("--path")
+                        .map(|v| v.as_str())
+                        .unwrap_or(plugin_directory);
+                    let mut args = ret.take_args().to_vec();
 
                     if help {
                         print_help(parser)?;
                         Ok(())
-                    } else if let Ok(lang) = parser.find_val::<String>("lang@1") {
-                        let lang = Lang::from_str(lang).map_err(|e| {
-                            raise_error!("not support given language {lang}: {e:?}")
-                        })?;
+                    } else if fetch_cmd == Some(&true) {
+                        args.remove(1);
+                        args.remove(0);
+                        let args: Vec<_> = args
+                            .into_iter()
+                            .map(|v| v.to_string_lossy().to_string())
+                            .collect();
 
-                        let dir = parser
-                            .find_val::<String>("--path")
-                            .map(|v| v.as_str())
-                            .unwrap_or(".");
-                        let mut args = ret.take_args().to_vec();
-
+                        download_plugin_from_release(&args)
+                            .await
+                            .map_err(|e| raise_error!("can not download plugin: {e:?}"))
+                    } else if c_cmd == Some(&true) {
                         tracing::debug!(
-                            "running language `{:?}`, search plugins in `{}`",
-                            lang,
-                            dir
+                            "running language c, search plugins in `{}`",
+                            plugin_directory
                         );
                         args.remove(1);
-                        find_compiler_and_try(dir, lang, args).await
+                        find_compiler_and_try(plugin_directory, Lang::C, args).await
+                    } else if cxx_cmd == Some(&true) {
+                        tracing::debug!(
+                            "running language c++, search plugins in `{}`",
+                            plugin_directory
+                        );
+                        args.remove(1);
+                        find_compiler_and_try(plugin_directory, Lang::Cxx, args).await
+                    } else if rust_cmd == Some(&true) {
+                        tracing::debug!(
+                            "running language rust, search plugins in `{}`",
+                            plugin_directory
+                        );
+                        args.remove(1);
+                        find_compiler_and_try(plugin_directory, Lang::Rust, args).await
                     } else {
                         eprintln!("Which language do you want to execute: c, c++ or rust?");
                         print_help(parser)?;
@@ -128,6 +163,48 @@ async fn main() -> color_eyre::Result<()> {
             }
         })
         .await?)
+}
+
+const PLUGINS: &str = include_str!("../plugins.ini");
+
+pub async fn download_plugin_from_release(plugins: &[String]) -> color_eyre::Result<()> {
+    let current_exe = current_exe()?;
+    let current_exe_dir = current_exe
+        .parent()
+        .ok_or_else(|| raise_error!("can not find parent directory of current exe"))?;
+
+    tracing::debug!("download plugins: {:?}", plugins);
+    for plugin in plugins {
+        for line in PLUGINS.lines() {
+            let (name, url) = line.split_once('=').unwrap();
+
+            if name == *plugin {
+                let resp = reqwest::get(url).await?;
+                let data = resp.bytes().await?;
+                let path = current_exe_dir.join(format!("{}.wasm", name));
+
+                if path.exists() {
+                    println!("remove old plugin `{}`", path.display());
+                    remove_file(&path).await?;
+                }
+                let mut out = File::options()
+                    .create_new(true)
+                    .write(true)
+                    .open(&path)
+                    .await?;
+
+                tracing::debug!("download plugin `{}` from {}", plugin, url);
+                tokio::io::copy(&mut data.as_ref(), &mut out).await?;
+                println!("download plugin `{plugin}` successed");
+                println!("plugin {} saved", path.display());
+                break;
+            } else {
+                tracing::debug!("can not find plugin `{}`", plugin);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn find_compiler_and_try(dir: &str, lang: Lang, args: Vec<RawVal>) -> cote::Result<()> {
