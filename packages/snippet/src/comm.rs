@@ -107,41 +107,46 @@ pub async fn fmt_and_display_code(
         fmt_args.split(';').collect()
     };
     let input = codes.join("\n");
-    let output = run_command(fmt_command, &fmt_args, &input, true)
-        .await
-        .map_err(|e| raise_error!("run fmt command failed: {e:?}"))?;
-    let Output {
-        status,
-        stdout,
-        stderr: _,
-    } = output;
 
     println!("-----------------------------------");
-    if status.success() {
-        let stdout = String::from_utf8(stdout).map_err(|e| raise_error!("invalid utf8: {e:?}"))?;
 
-        if let Some(cat) = cat {
-            let (cat_command, cat_args) = cat.split_once('=').unwrap_or((&cat, ""));
-            let cat_args: Vec<_> = if cat_args.is_empty() {
-                vec![]
-            } else {
-                cat_args.split(';').collect()
-            };
+    if let Ok(output) = run_command(fmt_command, &fmt_args, &input, true)
+        .await
+        .map_err(|e| raise_error!("run fmt command failed: {e:?}"))
+    {
+        let Output {
+            status,
+            stdout,
+            stderr: _,
+        } = output;
 
-            let ret = run_command(cat_command, &cat_args, &stdout, false)
-                .await
-                .map_err(|e| raise_error!("run cat command failed: {e:?}"))?;
+        if status.success() {
+            let stdout =
+                String::from_utf8(stdout).map_err(|e| raise_error!("invalid utf8: {e:?}"))?;
 
-            if ret.status.success() {
-                return Ok(());
+            if let Some(cat) = cat {
+                let (cat_command, cat_args) = cat.split_once('=').unwrap_or((&cat, ""));
+                let cat_args: Vec<_> = if cat_args.is_empty() {
+                    vec![]
+                } else {
+                    cat_args.split(';').collect()
+                };
+
+                let ret = run_command(cat_command, &cat_args, &stdout, false)
+                    .await
+                    .map_err(|e| raise_error!("run cat command failed: {e:?}"))?;
+
+                if ret.status.success() {
+                    return Ok(());
+                }
             }
-        }
 
-        println!("{}", stdout);
-    } else {
-        for code in codes {
-            println!("{}", code);
+            println!("{}", stdout);
+        } else {
+            println!("{}", input);
         }
+    } else {
+        println!("{}", input);
     }
 
     Ok(())
