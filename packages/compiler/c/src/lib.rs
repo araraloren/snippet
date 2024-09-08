@@ -31,7 +31,7 @@ impl Guest for Compiler {
     }
 
     fn support() -> Lang {
-        snippet::plugin::types::Lang::C
+        Lang::C
     }
 }
 
@@ -97,7 +97,7 @@ impl GuestCompiler for Compiler {
         self.add_arg(format!("-L{}", path))
     }
 
-    fn link_library(&self, library: String) -> Result<(), ErrorType> {
+    fn add_link_library(&self, library: String) -> Result<(), ErrorType> {
         self.add_arg(format!("-l{}", library))
     }
 
@@ -113,28 +113,27 @@ impl GuestCompiler for Compiler {
     }
 
     fn compile_code(&self, source: Vec<String>, out: String) -> Result<Target, ErrorType> {
-        let mut compiler_args = self.storage.args()?;
+        let bin = Self::bin()?;
+        let mut args = self.storage.args()?;
         let mode = self.storage.mode()?;
-        let compiler_mode = to_compiler_mode(mode);
-        let lang = to_lang_name(self.storage.lang()?);
 
-        if let Some(mode) = compiler_mode {
-            compiler_args.push(mode.to_string());
+        if let Some(mode) = to_compiler_mode(mode) {
+            args.push(mode.to_string());
         }
-        compiler_args.extend([
+        args.extend([
             "-o".to_string(),
             out.clone(),
-            format!("-x{lang}"),
+            format!("-x{}", to_lang_name(self.storage.lang()?)),
             "-".to_string(),
         ]);
-        let bin = Self::bin()?;
-        let result = Services::invoke_cmd(&bin, &compiler_args, &source)?;
+
+        let result = Services::invoke_cmd(&bin, &args, &source)?;
 
         Ok(Target {
             clean: false,
             output: match mode {
-                snippet::plugin::types::Mode::Compile => Output::Object(Object { path: out }),
-                snippet::plugin::types::Mode::Link => Output::Binary(Binary {
+                Mode::Compile => Output::Object(Object { path: out }),
+                Mode::Link => Output::Binary(Binary {
                     path: out,
                     args: vec![],
                 }),
@@ -146,22 +145,22 @@ impl GuestCompiler for Compiler {
     }
 
     fn compile_file(&self, path: String, out: String) -> Result<Target, ErrorType> {
-        let mut compiler_args = self.storage.args()?;
-        let mode = self.storage.mode()?;
-        let compiler_mode = to_compiler_mode(mode);
-
-        if let Some(mode) = compiler_mode {
-            compiler_args.push(mode.to_string());
-        }
-        compiler_args.extend(["-o".to_string(), out.clone(), path]);
         let bin = Self::bin()?;
-        let result = Services::invoke_cmd(&bin, &compiler_args, &[])?;
+        let mut args = self.storage.args()?;
+        let mode = self.storage.mode()?;
+
+        if let Some(mode) = to_compiler_mode(mode) {
+            args.push(mode.to_string());
+        }
+        args.extend(["-o".to_string(), out.clone(), path]);
+
+        let result = Services::invoke_cmd(&bin, &args, &[])?;
 
         Ok(Target {
             clean: false,
             output: match mode {
-                snippet::plugin::types::Mode::Compile => Output::Object(Object { path: out }),
-                snippet::plugin::types::Mode::Link => Output::Binary(Binary {
+                Mode::Compile => Output::Object(Object { path: out }),
+                Mode::Link => Output::Binary(Binary {
                     path: out,
                     args: vec![],
                 }),
@@ -173,17 +172,18 @@ impl GuestCompiler for Compiler {
     }
 
     fn link_object(&self, objs: Vec<String>, out: String) -> Result<Target, ErrorType> {
-        let mut compiler_args = self.storage.args()?;
+        let bin = Self::bin()?;
+        let mut args = self.storage.args()?;
         let mode = self.storage.mode()?;
 
-        if !matches!(mode, snippet::plugin::types::Mode::Link) {
-            return Err(snippet::plugin::types::ErrorType::InvalidModeForLink);
+        if !matches!(mode, Mode::Link) {
+            return Err(ErrorType::InvalidModeForLink);
         }
 
-        compiler_args.extend(objs);
-        compiler_args.extend(["-o".to_string(), out.clone()]);
-        let bin = Self::bin()?;
-        let result = Services::invoke_cmd(&bin, &compiler_args, &[])?;
+        args.extend(objs);
+        args.extend(["-o".to_string(), out.clone()]);
+
+        let result = Services::invoke_cmd(&bin, &args, &[])?;
 
         Ok(Target {
             clean: false,

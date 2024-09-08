@@ -303,7 +303,7 @@ pub async fn run_compiler(
         let fmt = fmt.unwrap_or(lang_fmt);
         let cat = cat.ok();
         tracing::debug!("display code with fmt: {fmt} and cat: {cat:?}");
-        comm::display_codes(fmt, cat, codes).await?;
+        comm::fmt_and_display_code(fmt, cat, codes).await?;
     }
     Ok(true)
 }

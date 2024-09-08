@@ -14,7 +14,7 @@ interface types {
         /// Compile the code to object
         compile,
 
-        /// Expand the macro or do preprocessing
+        /// Expand the macro
         expand,
 
         /// Compile the code to assembly
@@ -28,6 +28,7 @@ interface types {
         /// Not support given mode
         invalid-mode,
 
+        /// Not support given mode when link objects
         invalid-mode-for-link,
 
         /// Not support given optimization level
@@ -64,17 +65,21 @@ interface types {
         command-spawn-failed,
 
         /// Initialize optset failed
-        create-optset-failed,
+        optset-init-failed,
 
         /// Can not access value of optset
-        access-value-failed,
+        optset-access-value-failed,
 
+        /// There are no codes for compile
         empty-code,
 
+        /// Can not create directory
         create-dir-failed,
 
+        /// Can not initialize rustyline
         init-rustyline-failed,
 
+        /// Can not read line from rustyline
         rustyline-io-failed,
     }
 
@@ -163,13 +168,13 @@ interface types {
         /// Invoke the command
         invoke-cmd: static func(bin: string, args: list<string>, stdin: list<string>) -> result<cmd-result, error-type>;
 
-        /// Read from stdin
+        /// Read from stdin until line match end
         read-from-stdin: static func(end: string) -> result<list<string>, error-type>;
 
         /// Log message to debug channel
         log-debug: static func(log: string) -> result<_, error-type>;
 
-        /// Create a temp dir for objects
+        /// Create a temp directory for objects
         create-tmpdir: static func() -> result<string, error-type>;
     }
 }

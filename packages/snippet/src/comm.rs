@@ -1,15 +1,11 @@
 use std::{
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Output, Stdio},
     str::FromStr,
 };
 
 use cote::aopt::raise_error;
-use tokio::{
-    fs::read_dir,
-    io::{AsyncReadExt, AsyncWriteExt},
-    process::Command,
-};
+use tokio::{fs::read_dir, io::AsyncWriteExt, process::Command};
 use wac_graph::{types::Package, CompositionGraph, EncodeOptions};
 
 use crate::host::types::Lang;
@@ -99,87 +95,80 @@ pub async fn find_plugins(dir: &Path) -> cote::Result<Plugins> {
     Ok(plugins)
 }
 
-pub async fn display_codes(
+pub async fn fmt_and_display_code(
     fmt: String,
     cat: Option<String>,
     codes: Vec<String>,
 ) -> cote::Result<()> {
-    let (fmt_command, fmt_args) = fmt
-        .split_once('=')
-        .ok_or_else(|| raise_error!("invalid fmt string -> {fmt}"))?;
-    let fmt_args: Vec<_> = fmt_args.split(';').collect();
-    let mut fmt_cmd = Command::new(fmt_command);
+    let (fmt_command, fmt_args) = fmt.split_once('=').unwrap_or((&fmt, ""));
+    let fmt_args: Vec<_> = if fmt_args.is_empty() {
+        vec![]
+    } else {
+        fmt_args.split(';').collect()
+    };
+    let input = codes.join("\n");
+    let output = run_command(fmt_command, &fmt_args, &input, true)
+        .await
+        .map_err(|e| raise_error!("run fmt command failed: {e:?}"))?;
+    let Output {
+        status,
+        stdout,
+        stderr: _,
+    } = output;
 
-    fmt_cmd.args(fmt_args);
-    fmt_cmd.stdin(Stdio::piped());
-    fmt_cmd.stdout(Stdio::piped());
-    if let Ok(mut fmt_child) = fmt_cmd
-        .spawn()
-        .map_err(|e| raise_error!("can not spawn command: {e:?}"))
-    {
-        let fmt_stdin = fmt_child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| raise_error!("need write stdin to fmt command"))?;
-
-        for line in codes {
-            fmt_stdin
-                .write_all(format!("{}\n", line).as_bytes())
-                .await
-                .map_err(|e| raise_error!("can not write to stdin of fmt: {e:?}"))?;
-        }
-
-        let output = fmt_child
-            .wait()
-            .await
-            .map_err(|e| raise_error!("can not wait stdout: {e:?}"))?;
-
-        if !output.success() {
-            return Err(raise_error!("running fmt command failed: {output:?}"));
-        }
-
-        let mut stdout = fmt_child
-            .stdout
-            .ok_or_else(|| raise_error!("can not get stdout of fmt command"))?;
-        let mut output = String::default();
-
-        stdout
-            .read_to_string(&mut output)
-            .await
-            .map_err(|e| raise_error!("can not read stdout of fmt command: {e:?}"))?;
+    println!("-----------------------------------");
+    if status.success() {
+        let stdout = String::from_utf8(stdout).map_err(|e| raise_error!("invalid utf8: {e:?}"))?;
 
         if let Some(cat) = cat {
-            let (cat_command, cat_args) = cat
-                .split_once('=')
-                .ok_or_else(|| raise_error!("invalid fmt string -> {cat}"))?;
-            let cat_args: Vec<_> = cat_args.split(';').collect();
-            let mut cat_cmd = Command::new(cat_command);
+            let (cat_command, cat_args) = cat.split_once('=').unwrap_or((&cat, ""));
+            let cat_args: Vec<_> = if cat_args.is_empty() {
+                vec![]
+            } else {
+                cat_args.split(';').collect()
+            };
 
-            cat_cmd.args(cat_args);
-            cat_cmd.stdin(Stdio::piped());
-            if let Ok(mut cat_child) = cat_cmd.spawn() {
-                let cat_stdin = cat_child
-                    .stdin
-                    .as_mut()
-                    .ok_or_else(|| raise_error!("need write stdin to cat command"))?;
+            let ret = run_command(cat_command, &cat_args, &stdout, false)
+                .await
+                .map_err(|e| raise_error!("run cat command failed: {e:?}"))?;
 
-                cat_stdin
-                    .write_all(output.as_bytes())
-                    .await
-                    .map_err(|e| raise_error!("can not write to stdin of cat: {e:?}"))?;
+            if ret.status.success() {
                 return Ok(());
             }
         }
-        println!("-----------------------------------");
-        println!("{}", output);
-        println!("-----------------------------------");
+
+        println!("{}", stdout);
     } else {
-        println!("-----------------------------------");
         for code in codes {
             println!("{}", code);
         }
-        println!("-----------------------------------");
     }
 
     Ok(())
+}
+
+pub async fn run_command(
+    cmd: &str,
+    args: &[&str],
+    input: &str,
+    stdout: bool,
+) -> std::io::Result<Output> {
+    let mut cmd = Command::new(cmd);
+
+    cmd.args(args);
+    if !input.is_empty() {
+        cmd.stdin(Stdio::piped());
+    }
+    if stdout {
+        cmd.stdout(Stdio::piped());
+    }
+    let mut child = cmd.spawn()?;
+
+    if !input.is_empty() {
+        if let Some(stdin) = child.stdin.as_mut() {
+            stdin.write_all(format!("{}\n", input).as_bytes()).await?;
+        }
+    }
+
+    child.wait_with_output().await
 }

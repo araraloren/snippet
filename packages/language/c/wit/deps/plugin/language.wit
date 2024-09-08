@@ -5,13 +5,18 @@ interface language {
     use types.{error-type, mode, optset, lang, target};
     use compiler.{compiler};
 
+    /// The lang of language plugin
     name: func() -> lang;
 
+    /// The fmt tool used by default for language plugin
     fmt: func() -> string;
     
+    /// Initialize a option set 
     initialize-optset: func() -> result<optset, error-type>;
 
+    /// Fill the option used by current language plugin
     fill-optset: func(optset: optset) -> result<optset, error-type>;
 
+    /// Compile the code 
     compile: func(optset: optset, compiler: compiler) -> result<target, error-type>;
 }

@@ -134,7 +134,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
     }
 
     async fn default(&mut self) -> Result<Resource<OptSet>, ErrorType> {
-        let optset = OptSet::new().map_err(|_| ErrorType::CreateOptsetFailed)?;
+        let optset = OptSet::new().map_err(|_| ErrorType::OptsetInitFailed)?;
 
         self.table()
             .push(optset)
@@ -161,7 +161,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         optset
             .parser
             .find_val::<String>(name)
-            .map_err(|_| ErrorType::AccessValueFailed)
+            .map_err(|_| ErrorType::OptsetAccessValueFailed)
             .cloned()
     }
 
@@ -175,7 +175,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         optset
             .parser
             .find_val::<bool>(name)
-            .map_err(|_| ErrorType::AccessValueFailed)
+            .map_err(|_| ErrorType::OptsetAccessValueFailed)
             .copied()
     }
 
@@ -189,7 +189,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         optset
             .parser
             .find_val::<i64>(name)
-            .map_err(|_| ErrorType::AccessValueFailed)
+            .map_err(|_| ErrorType::OptsetAccessValueFailed)
             .copied()
     }
 
@@ -203,7 +203,7 @@ impl<T: WasiView> types::HostOptset for WasiImpl<T> {
         optset
             .parser
             .find_vals::<String>(name)
-            .map_err(|_| ErrorType::AccessValueFailed)
+            .map_err(|_| ErrorType::OptsetAccessValueFailed)
             .cloned()
     }
 

@@ -12,16 +12,16 @@ interface compiler {
     resource compiler {
         constructor();
 
-        /// Current arguments.
+        /// Current arguments for compiler
         args: func() -> result<list<string>, error-type>;
 
-        /// Is the compiler in debug mode?
+        /// Is the compiler in debug mode
         debug: func() -> result<bool, error-type>;
 
-        /// Current compile mode.
+        /// Current compile mode
         mode: func() -> result<mode, error-type>;
 
-        /// Set debug mode.
+        /// Set debug mode
         set-debug: func(debug: bool) -> result<_, error-type>;
 
         /// Set the compile mode.
@@ -43,7 +43,7 @@ interface compiler {
         add-library-path: func(path: string) -> result<_, error-type>;
 
         /// Link a library.
-        link-library: func(library: string) -> result<_, error-type>;
+        add-link-library: func(library: string) -> result<_, error-type>;
 
         /// Add an argument.
         add-arg: func(arg: string) -> result<_, error-type>;
