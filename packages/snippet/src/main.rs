@@ -3,7 +3,6 @@ pub mod host;
 
 use comm::find_plugins;
 use comm::link_component;
-use comm::Plugin;
 use comm::Plugins;
 use cote::prelude::*;
 use host::types::Binary;
@@ -62,6 +61,7 @@ async fn main() -> color_eyre::Result<()> {
     let reload_handler = subscriber.reload_handle();
     let mut parser = Parser::<'_, ASet, ASer>::default();
 
+    parser.set_name("snippet");
     parser.add_opt("f;fetch=cmd: fetch plugin from github release")?;
     parser.add_opt("c=cmd: language to be execute: c, c++, rust")?;
     parser.add_opt("cc;cpp;c++=cmd: language to be execute: c, c++, rust")?;
@@ -101,17 +101,16 @@ async fn main() -> color_eyre::Result<()> {
                     let cxx_cmd = parser.find_val::<bool>("cpp").ok();
                     let rust_cmd = parser.find_val::<bool>("rust").ok();
                     let fetch_cmd = parser.find_val::<bool>("fetch").ok();
+                    let compiler = parser.find_val::<PathBuf>("--comp").ok();
+                    let language = parser.find_val::<PathBuf>("--lang").ok();
                     let current_exe = current_exe()
                         .map_err(|e| raise_error!("can not get current exe directory: {e:?}"))?;
-                    let current_exe = current_exe
-                        .parent()
-                        .map(|v| v.to_string_lossy().to_string());
-                    let plugin_directory = &current_exe.ok_or_else(|| {
+                    let plugin_directory = current_exe.parent().ok_or_else(|| {
                         raise_error!("can not find parent directory of current exe")
                     })?;
                     let plugin_directory = parser
-                        .find_val::<String>("--path")
-                        .map(|v| v.as_str())
+                        .find_val::<PathBuf>("--path")
+                        .map(|v| v.as_ref())
                         .unwrap_or(plugin_directory);
                     let mut args = ret.take_args().to_vec();
 
@@ -132,24 +131,24 @@ async fn main() -> color_eyre::Result<()> {
                     } else if c_cmd == Some(&true) {
                         tracing::debug!(
                             "running language c, search plugins in `{}`",
-                            plugin_directory
+                            plugin_directory.display()
                         );
                         args.remove(1);
-                        find_compiler_and_try(plugin_directory, Lang::C, args).await
+                        find_and_try(plugin_directory, Lang::C, args, compiler, language).await
                     } else if cxx_cmd == Some(&true) {
                         tracing::debug!(
                             "running language c++, search plugins in `{}`",
-                            plugin_directory
+                            plugin_directory.display()
                         );
                         args.remove(1);
-                        find_compiler_and_try(plugin_directory, Lang::Cxx, args).await
+                        find_and_try(plugin_directory, Lang::Cxx, args, compiler, language).await
                     } else if rust_cmd == Some(&true) {
                         tracing::debug!(
                             "running language rust, search plugins in `{}`",
-                            plugin_directory
+                            plugin_directory.display()
                         );
                         args.remove(1);
-                        find_compiler_and_try(plugin_directory, Lang::Rust, args).await
+                        find_and_try(plugin_directory, Lang::Rust, args, compiler, language).await
                     } else {
                         eprintln!("Which language do you want to execute: c, c++ or rust?");
                         print_help(parser)?;
@@ -207,37 +206,58 @@ pub async fn download_plugin_from_release(plugins: &[String]) -> color_eyre::Res
     Ok(())
 }
 
-pub async fn find_compiler_and_try(dir: &str, lang: Lang, args: Vec<RawVal>) -> cote::Result<()> {
-    let Plugins { compiler, language } = find_plugins(Path::new(dir)).await?;
-    let compilers: Vec<_> = compiler.into_iter().filter(|v| v.lang == lang).collect();
-    let languages: Vec<_> = language.into_iter().filter(|v| v.lang == lang).collect();
+pub async fn find_and_try(
+    dir: &Path,
+    lang: Lang,
+    args: Vec<RawVal>,
+    compiler: Option<&PathBuf>,
+    language: Option<&PathBuf>,
+) -> cote::Result<()> {
+    let compiler = compiler.map(|v| v.as_ref());
+    let language = language.map(|v| v.as_ref());
 
-    if compilers.is_empty() {
-        return Err(raise_error!(
-            "can not find compiler support language `{:?}`",
-            lang
-        ));
-    } else if languages.is_empty() {
-        return Err(raise_error!(
-            "can not find language support language `{:?}`",
-            lang
-        ));
-    }
-    tracing::debug!("args for compiler: {args:?}");
-    for compiler in &compilers {
-        for language in &languages {
-            match run_compiler(compiler, language, args.clone(), lang).await {
-                Ok(ret) => {
-                    if ret {
-                        return Ok(());
+    if let Some((compiler, language)) = compiler.zip(language) {
+        run_compiler(compiler, language, args, lang)
+            .await
+            .map_err(|e| raise_error!("run compiler failed: {e:?}"))?;
+    } else {
+        let Plugins {
+            compiler: compilers,
+            language: languages,
+        } = find_plugins(dir).await?;
+        let compilers: Vec<_> = compilers.into_iter().filter(|v| v.lang == lang).collect();
+        let languages: Vec<_> = languages.into_iter().filter(|v| v.lang == lang).collect();
+
+        if compilers.is_empty() {
+            return Err(raise_error!(
+                "can not find compiler support language `{:?}`",
+                lang
+            ));
+        } else if languages.is_empty() {
+            return Err(raise_error!(
+                "can not find language support language `{:?}`",
+                lang
+            ));
+        }
+        tracing::debug!("args for compiler: {args:?}");
+        for compiler_plugin in &compilers {
+            for language_plugin in &languages {
+                let compiler = compiler.unwrap_or(&compiler_plugin.path);
+                let language = language.unwrap_or(&language_plugin.path);
+
+                match run_compiler(compiler, language, args.clone(), lang).await {
+                    Ok(ret) => {
+                        if ret {
+                            return Ok(());
+                        }
                     }
-                }
-                Err(e) => {
-                    tracing::debug!(
-                        "running compiler({}), language({}) failed: {e:?}",
-                        compiler.path.display(),
-                        language.path.display()
-                    );
+                    Err(e) => {
+                        tracing::debug!(
+                            "running compiler({}), language({}) failed: {e:?}",
+                            compiler_plugin.path.display(),
+                            language_plugin.path.display()
+                        );
+                    }
                 }
             }
         }
@@ -246,12 +266,12 @@ pub async fn find_compiler_and_try(dir: &str, lang: Lang, args: Vec<RawVal>) -> 
 }
 
 pub async fn run_compiler(
-    compiler: &Plugin,
-    language: &Plugin,
+    compiler: &Path,
+    language: &Path,
     args: Vec<RawVal>,
     lang: Lang,
 ) -> wasmtime::Result<bool> {
-    let component = link_component(&compiler.path, &language.path)?;
+    let component = link_component(compiler, language)?;
 
     let mut config = Config::new();
     let engine = wasmtime::Engine::new(config.async_support(true))?;
@@ -298,7 +318,11 @@ pub async fn run_compiler(
         .call_fill_optset(&mut store, optset)
         .await??;
 
-    let ret = store.data_mut().table().get_mut(&optset)?.parse(args)?;
+    let ret = store
+        .data_mut()
+        .table()
+        .get_mut(&optset)?
+        .parse(lang, args)?;
 
     if !ret {
         return Ok(false);

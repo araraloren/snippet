@@ -93,7 +93,7 @@ impl OptSet {
         Ok(Self { parser })
     }
 
-    pub fn parse(&mut self, args: Vec<RawVal>) -> Result<bool, cote::Error> {
+    pub fn parse(&mut self, lang: Lang, args: Vec<RawVal>) -> Result<bool, cote::Error> {
         let ret = PolicyParser::parse_policy(
             &mut self.parser,
             ARef::new(Args::from(args)),
@@ -109,6 +109,14 @@ impl OptSet {
 
         tracing::debug!("running compiler parse => {ret:?}");
         if !ret.status() || *self.parser.find_val::<bool>("-help")? {
+            self.parser.set_name(format!(
+                "snippet {}",
+                match lang {
+                    Lang::C => "c",
+                    Lang::Cxx => "cc",
+                    Lang::Rust => "rs",
+                }
+            ));
             print_help(&mut self.parser)?;
             Ok(false)
         } else {
