@@ -118,6 +118,11 @@ interface types {
         ret: s32,
     }
 
+    record slient {
+        stderr: bool,
+        stdout: bool,
+    }
+
     resource optset {
         constructor();
 
@@ -169,7 +174,7 @@ interface types {
         find-bin: static func(bin: string) -> result<string, error-type>;
 
         /// Invoke the command
-        invoke-cmd: static func(bin: string, args: list<string>, stdin: list<string>) -> result<cmd-result, error-type>;
+        invoke-cmd: static func(bin: string, args: list<string>, stdin: list<string>, slient: slient) -> result<cmd-result, error-type>;
 
         /// Read from stdin until line match end
         read-from-stdin: static func(end: string) -> result<list<string>, error-type>;
@@ -178,9 +183,9 @@ interface types {
         log-debug: static func(log: string) -> result<_, error-type>;
 
         /// Create a temp directory for objects
-        create-tmpdir: static func() -> result<string, error-type>;
+        create-tmpdir: static func(prefix: string) -> result<string, error-type>;
 
         /// Create a temp file with given content
-        create-tmpfile: static func(ext: string, content: list<u8>) -> result<string, error-type>;
+        create-tmpfile: static func(tmpdir: string, ext: string, content: list<u8>) -> result<string, error-type>;
     }
 }

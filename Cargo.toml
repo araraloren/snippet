@@ -4,6 +4,7 @@ members = [
     "packages/snippet",
     "packages/compiler/gcc",
     "packages/compiler/cl",
+    "packages/compiler/clang",
     "packages/compiler/cxx",
     "packages/compiler/rust",
     "packages/language/c",

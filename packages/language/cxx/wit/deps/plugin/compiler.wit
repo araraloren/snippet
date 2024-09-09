@@ -2,7 +2,7 @@
 package snippet:plugin@0.1.1;
 
 interface compiler {
-    use types.{error-type, mode, lang,  target};
+    use types.{error-type, mode, lang, slient, target};
 
     /// The lang of compiler plugin, for example `gcc`, `cl`, `clang`
     name: func() -> string;
@@ -59,12 +59,12 @@ interface compiler {
         add-raw-args: func(arg: list<string>) -> result<_, error-type>;
 
         /// Compile the code
-        compile-code: func(source: list<string>, out: string) -> result<target, error-type>;
+        compile-code: func(source: list<string>, out: string, slient: slient) -> result<target, error-type>;
 
         /// Compile the file
-        compile-file: func(path: string, out: string) -> result<target, error-type>;
+        compile-file: func(path: string, out: string, slient: slient) -> result<target, error-type>;
 
         /// Link the objects into executable
-        link-object: func(objs: list<string>, out: string) -> result<target, error-type>;
+        link-object: func(objs: list<string>, out: string, slient: slient) -> result<target, error-type>;
     }
 }
