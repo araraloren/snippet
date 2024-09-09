@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "packages/snippet",
-    "packages/compiler/c",
+    "packages/compiler/gcc",
+    "packages/compiler/cl",
     "packages/compiler/cxx",
     "packages/compiler/rust",
     "packages/language/c",

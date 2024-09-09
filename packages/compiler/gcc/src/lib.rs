@@ -2,8 +2,8 @@ wit_bindgen::generate!({
     path: "wit",
     world: "c",
     with: {
-        "snippet:plugin/types@0.1.0": generate,
-        "snippet:plugin/compiler@0.1.0": generate,
+        "snippet:plugin/types@0.1.1": generate,
+        "snippet:plugin/compiler@0.1.1": generate,
     }
 });
 
@@ -16,6 +16,7 @@ use snippet::plugin::types::Binary;
 use snippet::plugin::types::Object;
 use snippet::plugin::types::Output;
 use snippet::plugin::types::Services;
+use snippet::plugin::types::Slient;
 use snippet::plugin::types::Source;
 use snippet::plugin::types::Target;
 
@@ -25,6 +26,10 @@ pub struct Compiler {
 
 impl Guest for Compiler {
     type Compiler = Compiler;
+
+    fn name() -> String {
+        String::from("gcc")
+    }
 
     fn bin() -> Result<String, ErrorType> {
         Services::find_bin("gcc")
@@ -46,16 +51,18 @@ impl GuestCompiler for Compiler {
         self.storage.args()
     }
 
-    fn debug(&self) -> Result<bool, ErrorType> {
-        self.storage.debug()
-    }
-
     fn mode(&self) -> Result<Mode, ErrorType> {
         self.storage.mode()
     }
 
-    fn set_debug(&self, debug: bool) -> Result<(), ErrorType> {
-        self.storage.set_debug(debug)
+    fn enable_debug(&self) -> Result<(), ErrorType> {
+        self.add_raw_arg("-g".to_string())
+    }
+
+    fn enable_warn_error(&self) -> Result<(), ErrorType> {
+        self.add_raw_arg("-Wall".to_string())?;
+        self.add_raw_arg("-Wextra".to_string())?;
+        self.add_raw_arg("-Werror".to_string())
     }
 
     fn set_mode(&self, mode: Mode) -> Result<(), ErrorType> {
@@ -64,7 +71,7 @@ impl GuestCompiler for Compiler {
 
     fn set_opt_level(&self, level: u8) -> Result<(), ErrorType> {
         if matches!(level, 0..4) {
-            self.add_arg(format!("-O{}", level))
+            self.add_raw_arg(format!("-O{}", level))
         } else {
             Err(ErrorType::InvalidOptLevel)
         }
@@ -75,7 +82,7 @@ impl GuestCompiler for Compiler {
             std.as_str(),
             "c89" | "c99" | "c11" | "c17" | "c23" | "gnu89" | "gnu99" | "gnu11" | "gnu17" | "gnu23"
         ) {
-            self.add_arg(format!("-std={}", std))
+            self.add_raw_arg(format!("-std={}", std))
         } else {
             Err(ErrorType::InvalidStandard)
         }
@@ -83,36 +90,49 @@ impl GuestCompiler for Compiler {
 
     fn add_macro(&self, macro_: String, value: Option<String>) -> Result<(), ErrorType> {
         if let Some(value) = value {
-            self.add_arg(format!("-D{}={}", macro_, value))
+            self.add_raw_args(vec!["-D".to_string(), format!("{}={}", macro_, value)])
         } else {
-            self.add_arg(format!("-D{}", macro_))
+            self.add_raw_arg(format!("-D{}", macro_))
         }
     }
 
     fn add_include_path(&self, path: String) -> Result<(), ErrorType> {
-        self.add_arg(format!("-I{}", path))
+        self.add_raw_arg(format!("-I{}", path))
     }
 
     fn add_library_path(&self, path: String) -> Result<(), ErrorType> {
-        self.add_arg(format!("-L{}", path))
+        self.add_raw_arg(format!("-L{}", path))
     }
 
     fn add_link_library(&self, library: String) -> Result<(), ErrorType> {
-        self.add_arg(format!("-l{}", library))
+        self.add_raw_arg(format!("-l{}", library))
     }
 
-    fn add_arg(&self, arg: String) -> Result<(), ErrorType> {
+    fn add_arg(&self, arg: String, long: bool) -> Result<(), ErrorType> {
+        if long {
+            self.storage.add_arg(&format!("--{}", arg))
+        } else {
+            self.storage.add_arg(&format!("-{}", arg))
+        }
+    }
+
+    fn add_raw_arg(&self, arg: String) -> Result<(), ErrorType> {
         self.storage.add_arg(&arg)
     }
 
-    fn add_args(&self, args: Vec<String>) -> Result<(), ErrorType> {
+    fn add_raw_args(&self, args: Vec<String>) -> Result<(), ErrorType> {
         for arg in args {
-            self.add_arg(arg)?;
+            self.storage.add_arg(&arg)?;
         }
         Ok(())
     }
 
-    fn compile_code(&self, source: Vec<String>, out: String) -> Result<Target, ErrorType> {
+    fn compile_code(
+        &self,
+        source: Vec<String>,
+        out: String,
+        slient: Slient,
+    ) -> Result<Target, ErrorType> {
         let bin = Self::bin()?;
         let mut args = self.storage.args()?;
         let mode = self.storage.mode()?;
@@ -120,14 +140,9 @@ impl GuestCompiler for Compiler {
         if let Some(mode) = to_compiler_mode(mode) {
             args.push(mode.to_string());
         }
-        args.extend([
-            "-o".to_string(),
-            out.clone(),
-            format!("-x{}", to_lang_name(self.storage.lang()?)),
-            "-".to_string(),
-        ]);
+        args.extend(["-o", &out, "-xc", "-"].map(String::from));
 
-        let result = Services::invoke_cmd(&bin, &args, &source)?;
+        let result = Services::invoke_cmd(&bin, &args, &source, slient)?;
 
         Ok(Target {
             clean: false,
@@ -144,7 +159,7 @@ impl GuestCompiler for Compiler {
         })
     }
 
-    fn compile_file(&self, path: String, out: String) -> Result<Target, ErrorType> {
+    fn compile_file(&self, path: String, out: String, slient: Slient) -> Result<Target, ErrorType> {
         let bin = Self::bin()?;
         let mut args = self.storage.args()?;
         let mode = self.storage.mode()?;
@@ -154,7 +169,7 @@ impl GuestCompiler for Compiler {
         }
         args.extend(["-o".to_string(), out.clone(), path]);
 
-        let result = Services::invoke_cmd(&bin, &args, &[])?;
+        let result = Services::invoke_cmd(&bin, &args, &[], slient)?;
 
         Ok(Target {
             clean: false,
@@ -171,7 +186,12 @@ impl GuestCompiler for Compiler {
         })
     }
 
-    fn link_object(&self, objs: Vec<String>, out: String) -> Result<Target, ErrorType> {
+    fn link_object(
+        &self,
+        objs: Vec<String>,
+        out: String,
+        slient: Slient,
+    ) -> Result<Target, ErrorType> {
         let bin = Self::bin()?;
         let mut args = self.storage.args()?;
         let mode = self.storage.mode()?;
@@ -183,7 +203,7 @@ impl GuestCompiler for Compiler {
         args.extend(objs);
         args.extend(["-o".to_string(), out.clone()]);
 
-        let result = Services::invoke_cmd(&bin, &args, &[])?;
+        let result = Services::invoke_cmd(&bin, &args, &[], slient)?;
 
         Ok(Target {
             clean: false,
@@ -198,14 +218,6 @@ impl GuestCompiler for Compiler {
 }
 
 export!(Compiler);
-
-fn to_lang_name(lang: Lang) -> &'static str {
-    match lang {
-        snippet::plugin::types::Lang::C => "c",
-        snippet::plugin::types::Lang::Cxx => "c++",
-        snippet::plugin::types::Lang::Rust => "rust",
-    }
-}
 
 fn to_compiler_mode(mode: Mode) -> Option<&'static str> {
     match mode {

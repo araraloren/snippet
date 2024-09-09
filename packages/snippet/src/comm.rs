@@ -1,14 +1,11 @@
 use std::{
     path::{Path, PathBuf},
     process::{Output, Stdio},
-    str::FromStr,
 };
 
 use cote::aopt::raise_error;
 use tokio::{fs::read_dir, io::AsyncWriteExt, process::Command};
 use wac_graph::{types::Package, CompositionGraph, EncodeOptions};
-
-use crate::host::types::Lang;
 
 pub fn link_component(a: &Path, b: &Path) -> wasmtime::Result<Vec<u8>> {
     let mut graph = CompositionGraph::new();
@@ -19,21 +16,21 @@ pub fn link_component(a: &Path, b: &Path) -> wasmtime::Result<Vec<u8>> {
     let compiler_ins = graph.instantiate(compiler);
     let language_ins = graph.instantiate(language);
 
-    let comp_comp = graph.alias_instance_export(compiler_ins, "snippet:plugin/compiler@0.1.0")?;
+    let comp_comp = graph.alias_instance_export(compiler_ins, "snippet:plugin/compiler@0.1.1")?;
 
-    graph.set_instantiation_argument(language_ins, "snippet:plugin/compiler@0.1.0", comp_comp)?;
+    graph.set_instantiation_argument(language_ins, "snippet:plugin/compiler@0.1.1", comp_comp)?;
 
-    let lang_lang = graph.alias_instance_export(language_ins, "snippet:plugin/language@0.1.0")?;
+    let lang_lang = graph.alias_instance_export(language_ins, "snippet:plugin/language@0.1.1")?;
 
-    graph.export(lang_lang, "snippet:plugin/language@0.1.0")?;
-    graph.export(comp_comp, "snippet:plugin/compiler@0.1.0")?;
+    graph.export(lang_lang, "snippet:plugin/language@0.1.1")?;
+    graph.export(comp_comp, "snippet:plugin/compiler@0.1.1")?;
 
     Ok(graph.encode(EncodeOptions::default())?)
 }
 
 #[derive(Debug)]
 pub struct Plugin {
-    pub lang: Lang,
+    pub name: String,
     pub path: PathBuf,
 }
 
@@ -69,10 +66,10 @@ pub async fn find_plugins(dir: &Path) -> cote::Result<Plugins> {
                     if parts.len() == 3 {
                         if let Some(["snippet", ty, name]) = parts.get(0..3) {
                             let path = dir.join(path);
-                            let lang = Lang::from_str(name).map_err(|e| {
-                                raise_error!("not support given language `{name}`: {e:?}")
-                            })?;
-                            let plugin = Plugin { lang, path };
+                            let plugin = Plugin {
+                                name: name.to_string(),
+                                path,
+                            };
 
                             match *ty {
                                 "compiler" => {

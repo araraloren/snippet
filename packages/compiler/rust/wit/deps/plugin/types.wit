@@ -1,4 +1,4 @@
-package snippet:plugin@0.1.0;
+package snippet:plugin@0.1.1;
 
 interface types {
 
@@ -76,6 +76,9 @@ interface types {
         /// Can not create directory
         create-dir-failed,
 
+        /// Can not create file
+        create-file-failed,
+
         /// Can not initialize rustyline
         init-rustyline-failed,
 
@@ -135,34 +138,34 @@ interface types {
     resource services {
         constructor();
 
-        /// Is the compiler in debug mode?
+        /// Return the debug value of services
         debug: func() -> result<bool, error-type>;
     
-        /// Current language.
+        /// Return the language of services
         lang: func() -> result<lang, error-type>;
     
-        /// Current arguments.
+        /// Return all the aguments of services
         args: func() -> result<list<string>, error-type>;
     
-        /// Current compile mode.
+        /// Return the compile mode of services
         mode: func() -> result<mode, error-type>;
         
-        /// Set the language.
+        /// Set the language of services
         set-lang: func(language: lang) -> result<_, error-type>;
     
-        /// Set debug mode.
+        /// Set the debug value of services
         set-debug: func(debug: bool) -> result<_, error-type>;
     
-        /// Set the compile mode.
+        /// Set the compile mode of services
         set-mode: func(mode: mode) -> result<_, error-type>;
     
-        /// Add an argument.
+        /// Add a arguments to services
         add-arg: func(arg: string) -> result<_, error-type>;
     
-        /// Append arguments.
+        /// Append a arguments to services
         add-args: func(args: list<string>) -> result<_, error-type>;
 
-        /// Find the executable binary.
+        /// Find the executable binary in PATH
         find-bin: static func(bin: string) -> result<string, error-type>;
 
         /// Invoke the command
@@ -176,5 +179,8 @@ interface types {
 
         /// Create a temp directory for objects
         create-tmpdir: static func() -> result<string, error-type>;
+
+        /// Create a temp file with given content
+        create-tmpfile: static func(ext: string, content: list<u8>) -> result<string, error-type>;
     }
 }

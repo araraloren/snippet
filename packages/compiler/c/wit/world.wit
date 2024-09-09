@@ -1,8 +1,0 @@
-
-package snippet:snippet@0.1.0;
-
-world c {
-    import snippet:plugin/types@0.1.0;
-
-    export snippet:plugin/compiler@0.1.0;
-}

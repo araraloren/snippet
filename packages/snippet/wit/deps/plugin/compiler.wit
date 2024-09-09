@@ -1,63 +1,70 @@
 
-package snippet:plugin@0.1.0;
+package snippet:plugin@0.1.1;
 
 interface compiler {
-    use types.{error-type, mode, lang,  target};
+    use types.{error-type, mode, lang, slient, target};
 
-    /// the PathBuf of binary
+    /// The lang of compiler plugin, for example `gcc`, `cl`, `clang`
+    name: func() -> string;
+
+    /// The path of current compiler, for example `gcc`, `/?/bin/clang`
     bin: func() -> result<string, error-type>;
 
+    /// Which language is the compiler support
     support: func() -> lang;
 
     resource compiler {
         constructor();
 
-        /// Current arguments for compiler
+        /// Return all generated parameters passed to the compiler
         args: func() -> result<list<string>, error-type>;
 
-        /// Is the compiler in debug mode
-        debug: func() -> result<bool, error-type>;
-
-        /// Current compile mode
+        /// Return compiler mode
         mode: func() -> result<mode, error-type>;
 
-        /// Set debug mode
-        set-debug: func(debug: bool) -> result<_, error-type>;
+        /// Enable compiler debug information
+        enable-debug: func() -> result<_, error-type>;
 
-        /// Set the compile mode.
+        /// Enable all warnings and treat all warnings as error
+        enable-warn-error: func() -> result<_, error-type>;
+
+        /// Set the compile mode
         set-mode: func(mode: mode) -> result<_, error-type>;
 
-        /// Set the optimize level.
+        /// Set the level of compilation optimization
         set-opt-level: func(level: u8) -> result<_, error-type>;
 
-        /// Set the language standard.
+        /// Set the language standard
         set-standard: func(std: string) -> result<_, error-type>;
 
-        /// Add a macro.
+        /// Add a macro definition in the generated code
         add-macro: func(macro: string, value: option<string>) -> result<_, error-type>;
 
-        /// Add include path.
+        /// Add a include search path to compiler
         add-include-path: func(path: string) -> result<_, error-type>;
 
-        /// Add library path.
+        /// Add a library search path to compiler
         add-library-path: func(path: string) -> result<_, error-type>;
 
-        /// Link a library.
+        /// Add a library will be linked when executable is generated
         add-link-library: func(library: string) -> result<_, error-type>;
 
-        /// Add an argument.
-        add-arg: func(arg: string) -> result<_, error-type>;
+        /// Add a option to arguments, for example `-S`, `--opt=1`
+        add-arg: func(arg: string, long: bool) -> result<_, error-type>;
 
-        /// Append arguments.
-        add-args: func(args: list<string>) -> result<_, error-type>;
+        /// Add a raw parameter to generated parameters
+        add-raw-arg: func(arg: string) -> result<_, error-type>;
+
+        /// Append a raw parameter to generated parameters
+        add-raw-args: func(arg: list<string>) -> result<_, error-type>;
 
         /// Compile the code
-        compile-code: func(source: list<string>, out: string) -> result<target, error-type>;
+        compile-code: func(source: list<string>, out: string, slient: slient) -> result<target, error-type>;
 
         /// Compile the file
-        compile-file: func(path: string, out: string) -> result<target, error-type>;
+        compile-file: func(path: string, out: string, slient: slient) -> result<target, error-type>;
 
-        /// Link the object into executable
-        link-object: func(objs: list<string>, out: string) -> result<target, error-type>;
+        /// Link the objects into executable
+        link-object: func(objs: list<string>, out: string, slient: slient) -> result<target, error-type>;
     }
 }

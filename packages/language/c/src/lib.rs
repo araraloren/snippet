@@ -2,9 +2,9 @@ wit_bindgen::generate!({
     path: "wit",
     world: "c",
     with: {
-        "snippet:plugin/types@0.1.0": generate,
-        "snippet:plugin/language@0.1.0": generate,
-        "snippet:plugin/compiler@0.1.0": generate,
+        "snippet:plugin/types@0.1.1": generate,
+        "snippet:plugin/language@0.1.1": generate,
+        "snippet:plugin/compiler@0.1.1": generate,
     }
 });
 
@@ -17,6 +17,7 @@ use snippet::plugin::types::Lang;
 use snippet::plugin::types::Mode;
 use snippet::plugin::types::Optset;
 use snippet::plugin::types::Services;
+use snippet::plugin::types::Slient;
 use snippet::plugin::types::Target;
 
 pub struct Language;
@@ -81,12 +82,12 @@ impl Guest for Language {
 
         if let Ok(flags) = short_flags {
             for flag in flags {
-                compiler.add_arg(&format!("-{flag}"))?;
+                compiler.add_arg(&flag, false)?;
             }
         }
         if let Ok(flags) = long_flags {
             for flag in flags {
-                compiler.add_arg(&format!("--{flag}"))?;
+                compiler.add_arg(&flag, true)?;
             }
         }
 
@@ -114,9 +115,7 @@ impl Guest for Language {
             }
         }
         if wextra {
-            compiler.add_arg("-Wall")?;
-            compiler.add_arg("-Wextra")?;
-            compiler.add_arg("-Werror")?;
+            compiler.enable_warn_error()?;
         }
         if let Ok(standard) = standard {
             compiler.set_standard(&standard)?;
@@ -140,6 +139,7 @@ impl Guest for Language {
         let codes = optset.get_vals_str("-e=s").unwrap_or_default();
         let files = optset.get_vals_str("files").unwrap_or_default();
         let libraries = optset.get_vals_str("-l=s");
+        let slient = optset.get_val_bool("-/s=b").unwrap_or_default();
         let output = optset.get_val_str("-o=s").unwrap_or(
             if assemble {
                 "a.s"
@@ -219,7 +219,14 @@ impl Guest for Language {
 
             Services::log_debug("try to compile code")?;
 
-            let mut ret = compiler.compile_code(&compile_codes, &output)?;
+            let mut ret = compiler.compile_code(
+                &compile_codes,
+                &output,
+                Slient {
+                    stderr: slient,
+                    stdout: slient,
+                },
+            )?;
 
             ret.clean = !not_clean;
             ret.codes = compile_codes;
@@ -233,15 +240,23 @@ impl Guest for Language {
             if !codes.is_empty() {
                 Services::log_debug("ignore code append from -e")?;
             }
-            let tmpdir = Services::create_tmpdir()?;
+            let tmpdir = Services::create_tmpdir("snippet-language-c")?;
             let tmpdir = PathBuf::from(tmpdir);
             let mut objects = vec![];
 
+            Services::log_debug(&format!("create a tempdir = {}", tmpdir.display()))?;
             compiler.set_mode(Mode::Compile)?;
             for (idx, file) in files.iter().enumerate() {
                 let out = tmpdir.join(format!("{}.o", idx));
                 let out_path = out.to_string_lossy();
-                let ret = compiler.compile_file(file, &out_path)?;
+                let ret = compiler.compile_file(
+                    file,
+                    &out_path,
+                    Slient {
+                        stderr: slient,
+                        stdout: slient,
+                    },
+                )?;
 
                 Services::log_debug(&format!("compile object ret = {ret:?}"))?;
                 if ret.cmd_result.ret == 0 {
@@ -258,7 +273,14 @@ impl Guest for Language {
 
             Services::log_debug("try to compile multiple file")?;
 
-            let mut ret = compiler.link_object(&objects, &output)?;
+            let mut ret = compiler.link_object(
+                &objects,
+                &output,
+                Slient {
+                    stderr: slient,
+                    stdout: slient,
+                },
+            )?;
 
             Services::log_debug("compile multiple file successed")?;
             ret.clean = !not_clean;
