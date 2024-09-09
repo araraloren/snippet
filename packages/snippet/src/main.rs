@@ -168,9 +168,12 @@ async fn main() -> color_eyre::Result<()> {
         .await?)
 }
 
-const PLUGINS: &str = include_str!("../plugins.ini");
+const PLUGINS_LIST_URL: &str =
+    "https://raw.githubusercontent.com/araraloren/snippet/main/packages/snippet/plugins.ini";
 
 pub async fn download_plugin_from_release(plugins: &[String]) -> color_eyre::Result<()> {
+    let pluigns_list = reqwest::get(PLUGINS_LIST_URL).await?;
+    let plugins_list = pluigns_list.text().await?;
     let current_exe = current_exe()?;
     let current_exe_dir = current_exe
         .parent()
@@ -178,7 +181,7 @@ pub async fn download_plugin_from_release(plugins: &[String]) -> color_eyre::Res
 
     tracing::debug!("download plugins: {:?}", plugins);
     for plugin in plugins {
-        for line in PLUGINS.lines() {
+        for line in plugins_list.lines() {
             let (name, url) = line.split_once('=').unwrap();
 
             if name == *plugin {
