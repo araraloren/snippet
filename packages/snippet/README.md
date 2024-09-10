@@ -10,8 +10,11 @@ cargo install snippet
 
 ### Install compiler and language plugin
 
-snippet install snippet-compiler-c
-snippet install snippet-language-c
+snippet f snippet-compiler-gcc
+
+snippet f snippet-language-c
+
+Checkout plugins list in [`plugins.ini`](https://github.com/araraloren/snippet/blob/main/packages/snippet/plugins.ini)
 
 ### Run code
 
