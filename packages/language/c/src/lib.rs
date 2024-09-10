@@ -139,7 +139,8 @@ impl Guest for Language {
         let codes = optset.get_vals_str("-e=s").unwrap_or_default();
         let files = optset.get_vals_str("files").unwrap_or_default();
         let libraries = optset.get_vals_str("-l=s");
-        let slient = optset.get_val_bool("-/s=b").unwrap_or_default();
+        let stdout = !optset.get_val_bool("-/o=b").unwrap_or_default();
+        let stderr = optset.get_val_bool("-/e=b").unwrap_or_default();
         let output = optset.get_val_str("-o=s").unwrap_or(
             if assemble {
                 "a.s"
@@ -215,18 +216,14 @@ impl Guest for Language {
                 }
                 compile_codes.push("return 0;".to_string());
                 compile_codes.push("}".to_string());
+            } else {
+                return Err(ErrorType::EmptyCode);
             }
 
             Services::log_debug("try to compile code")?;
 
-            let mut ret = compiler.compile_code(
-                &compile_codes,
-                &output,
-                Slient {
-                    stderr: slient,
-                    stdout: slient,
-                },
-            )?;
+            let mut ret =
+                compiler.compile_code(&compile_codes, &output, Slient { stderr, stdout })?;
 
             ret.clean = !not_clean;
             ret.codes = compile_codes;
@@ -249,14 +246,7 @@ impl Guest for Language {
             for (idx, file) in files.iter().enumerate() {
                 let out = tmpdir.join(format!("{}.o", idx));
                 let out_path = out.to_string_lossy();
-                let ret = compiler.compile_file(
-                    file,
-                    &out_path,
-                    Slient {
-                        stderr: slient,
-                        stdout: slient,
-                    },
-                )?;
+                let ret = compiler.compile_file(file, &out_path, Slient { stderr, stdout })?;
 
                 Services::log_debug(&format!("compile object ret = {ret:?}"))?;
                 if ret.cmd_result.ret == 0 {
@@ -273,14 +263,7 @@ impl Guest for Language {
 
             Services::log_debug("try to compile multiple file")?;
 
-            let mut ret = compiler.link_object(
-                &objects,
-                &output,
-                Slient {
-                    stderr: slient,
-                    stdout: slient,
-                },
-            )?;
+            let mut ret = compiler.link_object(&objects, &output, Slient { stderr, stdout })?;
 
             Services::log_debug("compile multiple file successed")?;
             ret.clean = !not_clean;

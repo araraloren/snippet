@@ -229,6 +229,7 @@ pub async fn find_and_try(
             .await
             .map_err(|e| raise_error!("run compiler failed: {e:?}"))?;
     } else {
+        let mut last_error = None;
         let Plugins {
             compiler: compilers,
             language: languages,
@@ -266,9 +267,13 @@ pub async fn find_and_try(
                     }
                     Err(e) => {
                         tracing::debug!("got error: {e:?}",);
+                        last_error = Some(e);
                     }
                 }
             }
+        }
+        if let Some(error) = last_error {
+            return Err(raise_error!("failed to run compiler: {error:?}"));
         }
     }
     Ok(())
