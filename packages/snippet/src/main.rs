@@ -63,15 +63,18 @@ async fn main() -> color_eyre::Result<()> {
 
     parser.set_name("snippet");
     parser.add_opt("f;fetch=cmd: fetch plugin from github release")?;
-    parser.add_opt("c=cmd: language to be execute: c, c++, rust")?;
-    parser.add_opt("cc;cpp;c++=cmd: language to be execute: c, c++, rust")?;
-    parser.add_opt("rs;rust=cmd: language to be execute: c, c++, rust")?;
-    parser.add_opt("--name=s: using given compiler")?;
+    parser.add_opt("c=cmd: load c language plugin, generate and execute c language")?;
+    parser
+        .add_opt("cc;cpp;c++=cmd: load c++ language plugin, generate and execute c++ language")?;
+    parser.add_opt("rs;rust=cmd: load rust language plugin, generate and execute rust language")?;
+    parser.add_opt(
+        "--name=s: select a compiler if the language has multiple compilers, such as --name=gcc",
+    )?;
     parser.add_opt("--debug=b: display debug log message")?;
     parser.add_opt("--help=b: display help message")?;
     parser.add_opt("--path: search plugins in given path".infer::<PathBuf>())?;
-    parser.add_opt("--comp: using given compiler plugin".infer::<PathBuf>())?;
-    parser.add_opt("--lang: using given language plugin".infer::<PathBuf>())?;
+    parser.add_opt("--comp: set the path of compiler plugin".infer::<PathBuf>())?;
+    parser.add_opt("--lang: set the path of language plugin".infer::<PathBuf>())?;
     subscriber.init();
 
     Ok(parser

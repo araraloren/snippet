@@ -67,10 +67,10 @@ impl Guest for Language {
     }
 
     fn fill_optset(optset: Optset) -> Result<Optset, ErrorType> {
-        optset.add_opt("-i=s: pass -i to compiler, include given header")?;
-        optset.add_opt("-I=s: pass -I to compiler, add include header search path")?;
-        optset.add_opt("-D=s: pass -D to compiler, add macro definition")?;
-        optset.add_opt("-pp=s: add preprocess command to code")?;
+        optset.add_opt("-i=s: add <header.h> to the source file")?;
+        optset.add_opt("-I=s: add header file search path")?;
+        optset.add_opt("-D=s: defines a macro to be used by the preprocessor")?;
+        optset.add_opt("-pp=s: add preprocess command to source code")?;
         optset.add_opt("-w=b: pass -Wall -Wextra -Werror to compiler")?;
         Ok(optset)
     }
